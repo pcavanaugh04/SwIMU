@@ -288,13 +288,15 @@ void loop() {
   else if (inDataRecordMode == true) {
     ledBlink(100, 1900, RED_LED, ledRedTimer);
     accelTime = (float)(millis() - accelStartMillis) / 1000;
-    
+    char accelBuffer[40];
     float accelX = myIMU.readFloatAccelX();
     float accelY = myIMU.readFloatAccelY();
     float accelZ = myIMU.readFloatAccelZ();
     float gyroX = myIMU.readFloatGyroX();
     float gyroY = myIMU.readFloatGyroY();
     float gyroZ = myIMU.readFloatGyroZ();
+    sprintf(accelBuffer, "%.4f, %.3f, %3f, %.3f, %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
+    accelDataFile.println(accelBuffer);
     /*
     // float accelDataLine[7] = {accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ};
     Serial.print("[");
