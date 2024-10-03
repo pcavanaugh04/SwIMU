@@ -43,6 +43,7 @@ const int RED_LED = 12;
 const int GREEN_LED = 13;
 const int BLUE_LED = 14;
 const int chipSelect = 2;
+const unsigned long microsOverflowValue = 4294967295;
 
 bool recording = false;
 
@@ -73,6 +74,9 @@ unsigned long numSamples = 0;
 float accelTime;
 int currentCount;
 File accelDataFile;
+const float dataRateHz = 500.0;
+const float dataPerioduS = 1 / dataRateHz * 1000000;
+unsigned long dataReadTime;
 
 void displayDirectory(File dir, int numTabs=0) {
   while (true) {
@@ -194,7 +198,8 @@ void handleButtonEvent() {
           Serial.print("Current file count number: ");
           Serial.println(currentCount);
           accelDataFile = SD.open(accelDir + fileName, FILE_WRITE);
-          accelDataFile.print("Test String!");
+          dataReadTime = micros();
+          //accelDataFile.print("Test String!");
         }
       }
     }
@@ -287,16 +292,27 @@ void loop() {
 
   else if (inDataRecordMode == true) {
     ledBlink(100, 1900, RED_LED, ledRedTimer);
-    accelTime = (float)(millis() - accelStartMillis) / 1000;
-    char accelBuffer[40];
-    float accelX = myIMU.readFloatAccelX();
-    float accelY = myIMU.readFloatAccelY();
-    float accelZ = myIMU.readFloatAccelZ();
-    float gyroX = myIMU.readFloatGyroX();
-    float gyroY = myIMU.readFloatGyroY();
-    float gyroZ = myIMU.readFloatGyroZ();
-    sprintf(accelBuffer, "%.4f, %.3f, %3f, %.3f, %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
-    accelDataFile.println(accelBuffer);
+    // Check to see if assigned data rate has been met
+    unsigned int timeNowuS = micros();
+    // Handle Overflow Event
+    if (timeNowuS < dataReadTime) {
+      timeNowuS += microsOverflowValue;
+    }
+
+    if ((timeNowuS - dataReadTime) > dataPerioduS * 6) {
+      dataReadTime = micros();
+      accelTime = (float)(millis() - accelStartMillis) / 1000;
+      char accelBuffer[40];
+      float accelX = myIMU.readFloatAccelX();
+      float accelY = myIMU.readFloatAccelY();
+      float accelZ = myIMU.readFloatAccelZ();
+      float gyroX = myIMU.readFloatGyroX();
+      float gyroY = myIMU.readFloatGyroY();
+      float gyroZ = myIMU.readFloatGyroZ();
+      sprintf(accelBuffer, "%.4f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
+      accelDataFile.println(accelBuffer);
+      numSamples = numSamples + 6;
+    }
     /*
     // float accelDataLine[7] = {accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ};
     Serial.print("[");
@@ -317,7 +333,7 @@ void loop() {
     Serial.print("]");
     */
     
-    numSamples = numSamples + 6;
+
     // Other stuff to do in data recording mode
   
   }
