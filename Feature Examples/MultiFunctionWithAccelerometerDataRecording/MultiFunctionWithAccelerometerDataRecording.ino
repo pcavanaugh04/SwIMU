@@ -211,8 +211,6 @@ void handleButtonEvent() {
           digitalWrite(RED_LED, HIGH);
           float calcHz = numSamples / accelTime;
           numSamples = 0;
-          Serial.print("Calculated data rate [Hz]: ");
-          Serial.println(calcHz);
 
           // Close Data File
           accelDataFile.close();
@@ -222,6 +220,10 @@ void handleButtonEvent() {
           File newCounterFile = SD.open("accelDir/counter.txt", FILE_WRITE);
           newCounterFile.print(currentCount, DEC);
           newCounterFile.close();
+          Serial.print("Calculated data rate [Hz]: ");
+          Serial.println(calcHz);
+
+
         }
 
         else if (inBluetoothPairingMode == true) {
@@ -243,8 +245,8 @@ void setup() {
   Serial.begin(115200);
   while(!Serial)
   digitalWrite(chipSelect, HIGH);
+  delay(1000);
   Serial.println("Initializing SD Card...");
-
   if (!SD.begin(chipSelect)) {
     Serial.println("Initializing failed!");
     while (1);
@@ -310,6 +312,7 @@ void loop() {
       float gyroY = myIMU.readFloatGyroY();
       float gyroZ = myIMU.readFloatGyroZ();
       sprintf(accelBuffer, "%.4f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
+      Serial.println(accelBuffer);
       accelDataFile.println(accelBuffer);
       numSamples = numSamples + 6;
     }
