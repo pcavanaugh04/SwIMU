@@ -42,7 +42,7 @@ const int buttonPin = 0;
 const int RED_LED = 12;
 const int GREEN_LED = 13;
 const int BLUE_LED = 14;
-const int chipSelect = 2;
+const int chipSelect = 5;
 const unsigned long microsOverflowValue = 4294967295;
 
 bool recording = false;

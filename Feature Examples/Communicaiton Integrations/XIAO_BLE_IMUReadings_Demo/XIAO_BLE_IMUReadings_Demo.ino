@@ -6,7 +6,7 @@
 #include <string.h>
 
 // SD Card Setup
-const int chipSelect = 2;
+const int chipSelect = 5;
 int currentCount;
 
 // BLE Setup
