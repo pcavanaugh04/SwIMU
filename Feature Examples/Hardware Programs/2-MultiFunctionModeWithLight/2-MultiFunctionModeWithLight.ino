@@ -46,22 +46,12 @@
 */
 /*******************************************************************************/
 
-// #include "LSM6DS3.h"
-// #include "Wire.h"
-
-//Create a instance of class LSM6DS3
-// LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
-
 // Setup variables
-// const int numReadings = 1000;
 const int buttonPin = 0; // I/O pin where the button is connected
-
-// Pin assignments of the onbaord LEC
+// Pin assignments of the onbaord LED
 const int RED_LED = 12;
 const int GREEN_LED = 13;
 const int BLUE_LED = 14;
-
-// bool recording = false;
 
 // Button state varialbles
 bool lastButtonState = LOW;  // State variable of last button press

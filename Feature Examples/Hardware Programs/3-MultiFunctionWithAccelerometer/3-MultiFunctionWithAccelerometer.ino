@@ -1,62 +1,72 @@
 /*****************************************************************************/
-//  HighLevelExample.ino
-//  Hardware:      Grove - 6-Axis Accelerometer&Gyroscope
-//	Arduino IDE:   Arduino-1.65
-//	Author:	       Lambor
-//	Date: 	       Oct,2015
-//	Version:       v1.0
-//
-//  Modified by:
-//  Data:
-//  Description:
-//
-//	by www.seeedstudio.com
-//
-//  This library is free software; you can redistribute it and/or
-//  modify it under the terms of the GNU Lesser General Public
-//  License as published by the Free Software Foundation; either
-//  version 2.1 of the License, or (at your option) any later version.
-//
-//  This library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-//  Lesser General Public License for more details.
-//
-//  You should have received a copy of the GNU Lesser General Public
-//  License along with this library; if not, write to the Free Software
-//  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
-//
+/*  
+  2-MultiFunctionWithAccelerometer.ino
+  Hardware:      Seeed XIAO BLE Sense - nRF52840
+	Arduino IDE:   Arduino-2.3.4
+	Author:	       pcavanaugh04
+	Date: 	       Dec,2024
+	Version:       v1.0
+
+  This tutorial is the third in the series of understanding some of the 
+  functions of my swIMU project. This series is aimed to teach some of the
+  fundamentals of product design in sports technology applications, including
+  user interfaces, technical interfaces, and technical implementations. 
+
+  If you are just getting started... Go back to the first example!
+  
+  This module extends the capability of recongnizing and responding to user
+  inputs by introducing the funcitonality of the XIAO Sense's onboard 6-axis
+  IMU.
+  
+  The IMU detects 6 values - linear accelleration in x, y, z and rotational
+  accelleration in x, y, z. This module shows how to setup and read values 
+  from the onboard accelerometer in the context of the program's operating
+  state UI.
+  
+  This library is free software; you can redistribute it and/or
+  modify it under the terms of the GNU Lesser General Public
+  License as published by the Free Software Foundation; either
+  version 2.1 of the License, or (at your option) any later version.
+
+  This library is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public
+  License along with this library; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+*/
 /*******************************************************************************/
 
-// #include "Arduino.h"
+// Include necessary libraries to interface with sensor
 #include "LSM6DS3.h"
 #include "Wire.h"
 
 //Create a instance of class LSM6DS3
-LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
+LSM6DS3 myIMU(I2C_MODE, 0x6A);  //I2C device address 0x6A
 
 // Setup variables
-const int numReadings = 1000;
-const int buttonPin = 0;
+// const int numReadings = 1000;
+const int buttonPin = 0; // I/O pin where the button is connected
+// Pin assignments of the onbaord LED
 const int RED_LED = 12;
 const int GREEN_LED = 13;
 const int BLUE_LED = 14;
 
-bool recording = false;
-
 // Button state varialbles
-bool lastButtonState = LOW;
-bool buttonState = LOW;
-unsigned long lastDebounceTime = 0;
-float buttonPressStart;
-float buttonPressDuration;
-bool newButtonSequence = false;
-const unsigned long debounceDelay = 50;
-int consecutiveButtonPresses = 1;
-unsigned long consecutivePressTimer = 0;
-const unsigned long consecutivePressThreshold = 250;
+bool lastButtonState = LOW;  // State variable of last button press
+bool buttonState = LOW;  // Current button state
+unsigned long lastDebounceTime = 0;  // timestamp of last button event (either press or release)
+float buttonPressStart;  // time index to record the start of button event
+float buttonPressDuration;  // Store how long the button has been pressed
+bool newButtonSequence = false;  // Flag to indicate if a new sequence has been detected for evaluation
+const unsigned long debounceDelay = 50;  // Time limit to filter out any signal errors from the button press
+int consecutiveButtonPresses = 1;  // Counter variable to detect consecutive presses
+unsigned long consecutivePressTimer = 0;  // Store how long a button is held down
+const unsigned long consecutivePressThreshold = 250;  // Threshold for determining when to count button presses as consecutive
 
-// Sensor mode variables
+// Sensor mode flags to indicate what state the device is in
 bool inBluetoothPairingMode = false;
 bool inDataRecordMode = false;
 
@@ -70,56 +80,15 @@ unsigned long accelStartMillis;
 unsigned long numSamples = 0;
 float accelTime;
 
-void checkForButtonInputs() {
-    // This section reads information about the interface button.
-    // Results of this logic dictate what functions to do later in the code
-
-    bool reading = digitalRead(buttonPin);
-    // Serial.println(currentButtonState);
-
-    // Check if button state has changed
-    if (reading != lastButtonState) {
-      lastDebounceTime = millis();
-    }
-
-    // Check if enough time has passed since last state change
-    if ((millis() - lastDebounceTime) > debounceDelay) {
-      // If button state has changed we enter this area 
-      if (reading != buttonState) {
-        buttonState = reading;
-
-        // Recognize toggle event if button is High
-        if (buttonState == HIGH) {
-          newButtonSequence = true;
-          if (consecutivePressTimer != 0 && (millis() - consecutivePressTimer) < consecutivePressThreshold) {
-            consecutiveButtonPresses++;
-
-          }
-          
-          buttonPressStart = millis();
-        }
-
-        // If state changed and results in LOW, button has been released
-        if (buttonState == LOW) {
-          buttonPressDuration = (millis() - buttonPressStart) / 1000;
-          consecutivePressTimer = millis();
-          // Serial.print("Button Pressed for ");
-          // Serial.print(buttonPressDuration);
-          // Serial.println("s");
-
-        }
-      } 
-    }
-
-    lastButtonState = reading;
-}
-
 void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVariable) {
-  // Serial.print(ledPin);
+  // Function to make a specified LED blink at a specified duty cycle 
+ 
+  // If the current timerVariable has been on less than the specified on/time, keep the light on
   if ((millis() - timerVariable) < timeOn) {
     digitalWrite(ledPin, LOW);
   } 
 
+  // Otherwise turn/keep it off
   else if ((millis() - timerVariable) >= timeOn && (millis() - timerVariable) <= timeOff) {
     digitalWrite(ledPin, HIGH);
   }
@@ -127,6 +96,54 @@ void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVa
   else {
     timerVariable = millis();
   }
+}
+
+// Function to detect sequence and duration of button presses
+void checkForButtonInputs() {
+    // Reads information about user interaction with the input button.
+    // This input is setup to accept a number of consecutive button presses and
+    // count the duration of the last button press. This gives 2 dimensions of 
+    // inputs: number of presses, and duration of last button press. Different 
+    // combinations of these two events can be assigned to functions, which will
+    // demonstrated later in the tutorial
+
+    // Read current state of the button pin
+    bool reading = digitalRead(buttonPin);
+    // Serial.println(currentButtonState); // Optional debug statement
+
+    // Check if button state has changed
+    if (reading != lastButtonState) {
+      // If state has changed, start a counter to filter any change values within the debounce delay
+      lastDebounceTime = millis();
+    }
+
+    // Check if enough time has passed since last state change
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      // If a successful button state changed is detected we enter this area 
+      if (reading != buttonState) {
+        buttonState = reading; // update buttonState to the current reading
+
+        // Recognize the start of a toggle event if button is High
+        if (buttonState == HIGH) {
+          newButtonSequence = true;
+          // If consecutive presses happen within the threshold, increment the press counter
+          if (consecutivePressTimer != 0 && (millis() - consecutivePressTimer) < consecutivePressThreshold) {
+            consecutiveButtonPresses++;
+
+          }
+          // start a timer to count how long the final press duration is
+          buttonPressStart = millis();
+        }
+
+        // If state changed and results in LOW, button has been released
+        if (buttonState == LOW) {
+          buttonPressDuration = (millis() - buttonPressStart) / 1000;
+          consecutivePressTimer = millis();
+        }
+      } 
+    }
+    // update the last button state to the current reading, for when everything is checked in the next loop iteration
+    lastButtonState = reading;
 }
 
 void handleButtonEvent() {
@@ -145,16 +162,16 @@ void handleButtonEvent() {
       if (consecutiveButtonPresses == 2) {
         digitalWrite(GREEN_LED, HIGH);
 
-  // A long hold indicates going into bluetooth pairing/transmit mode  
+        // A long hold indicates going into bluetooth pairing/transmit mode  
         if (buttonPressDuration > 3) {
           Serial.println("Entering Bluetooth Pairing Mode!");
           inBluetoothPairingMode = true;
         }
-  // A short hold indicates starting accelerometer data recording
+        // A short hold indicates starting accelerometer data recording
         else if (buttonPressDuration < 3) {
           Serial.println("Entering Data Record Mode!");
           inDataRecordMode = true;
-          accelStartMillis = millis();
+          accelStartMillis = millis(); // take a reading as the "zero" time for the acceleometer time index
         }
       }
 
@@ -164,6 +181,8 @@ void handleButtonEvent() {
           Serial.println("Exiting Data Recording Mode!");
           inDataRecordMode = false;
           digitalWrite(RED_LED, HIGH);
+          
+          // Quick check to speedtest the accelerometer data rate when data recording stops
           float calcHz = numSamples / accelTime;
           numSamples = 0;
           Serial.print("Calculated data rate [Hz]: ");
@@ -177,7 +196,7 @@ void handleButtonEvent() {
         }
       }
         
-  // Reset variables at end of handling sequence
+      // Reset variables at end of handling sequence
       newButtonSequence = false;
       consecutiveButtonPresses = 1;
     }
@@ -187,8 +206,8 @@ void setup() {
     // put your setup code here, to run once:
     Serial.begin(115200);
     
-    //while (!Serial);
-    //Call .begin() to configure the IMUs
+    // while (!Serial);
+    // Call .begin() to configure the IMUs
     if (myIMU.begin() != 0) {
         Serial.println("Device error");
     } else {
@@ -221,63 +240,30 @@ void loop() {
 
   else if (inDataRecordMode == true) {
     ledBlink(100, 1900, RED_LED, ledRedTimer);
+    
+    // Record data from the IMU. at each loop iteration, take a time reading and
+    // read from each available sensor value
+
+    // Time reading
     accelTime = (float)(millis() - accelStartMillis) / 1000;
     
+    // Data reading
     float accelX = myIMU.readFloatAccelX();
     float accelY = myIMU.readFloatAccelY();
     float accelZ = myIMU.readFloatAccelZ();
     float gyroX = myIMU.readFloatGyroX();
     float gyroY = myIMU.readFloatGyroY();
     float gyroZ = myIMU.readFloatGyroZ();
-    /*
-    // float accelDataLine[7] = {accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ};
-    Serial.print("[");
-    //Serial.print((float)(millis() - accelStartMillis) / 1000);
-    Serial.print(accelTime);
-    Serial.print(", ");
-    Serial.print(accelX);
-    Serial.print(", ");
-    Serial.print(accelY);
-    Serial.print(", ");
-    Serial.print(accelZ);
-    Serial.print(", ");
-    Serial.print(gyroX);
-    Serial.print(", ");
-    Serial.print(gyroY);
-    Serial.print(", ");
-    Serial.print(gyroZ);
-    Serial.print("]");
-    */
     
-    numSamples = numSamples + 6;
-    // Other stuff to do in data recording mode
-  
+    char accelDataLine[7] = {accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ};
+    char accelBuffer[100];
+    sprintf(accelBuffer, "Time: %.4f, Accel x,y,z: %.3f, %.3f, %.3f | Gyro x,y,z: %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
+    Serial.println(accelBuffer);
+    numSamples = numSamples + 6;  
   }
 
   else {
     // Nothing Happening, in standby mode
     ledBlink(100, 1900, GREEN_LED, ledGreenTimer);
   }
-
-    /*
-    startTime = millis();
-    for (int i = 0; i < numReadings; i++) {
-      accelX = myIMU.readFloatAccelX();
-    }
-    endTime = millis();
-
-    unsigned long elapsedTime = endTime - startTime;
-    avgSampleRate = (numReadings / (elapsedTime / 1000.0));
-    //Accelerometer
-    Serial.print("Time Taken:");
-    Serial.print(elapsedTime);
-    Serial.println(" milliseconds");
-
-    Serial.print("Average sampling rate: ");
-    Serial.print(avgSampleRate);
-    Serial.println(" readings per second");
-
-    delay(1000);
-
-    */
 }
