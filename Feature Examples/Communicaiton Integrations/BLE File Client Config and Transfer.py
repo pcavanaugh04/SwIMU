@@ -79,9 +79,12 @@ async def main():
         
         # Callback to accumulate packets of file data from server
         async def handle_file_data(sender, data):
+            start_time = time.perf_counter()
             nonlocal file_data
             file_data += data
-            print(f"Recieved {len(data)} bytes of data.")
+            notif_time = time.perf_counter() - start_time
+            # print(f"Recieved {len(data)} bytes of data in {notif_time}s")
+            # print(f"data: {data.decode('utf-8')}")
         
         # Setup the notificaiton handler
         await client.start_notify(FILE_TX_UUID, handle_file_data)
@@ -97,7 +100,7 @@ async def main():
                 
         # config file complete notificaiton manager
         await client.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)
-
+        file_tx_start = time.perf_counter()
         # Acknowledge file name to indicate we're ready to recieve file data 
         await client.write_gatt_char(FILE_TX_REQUEST_UUID, b"START")
         print("Client Acknowledged File name. Beginning Transfer")
@@ -106,7 +109,7 @@ async def main():
         # Wait for transfer compltete notification
         
         await transfer_complete
-        print("Theoretically We're done here")
+        print(f"File tx in {time.perf_counter() - file_tx_start}s")
 
         # Disconnect notifications
         # await client.stop_notify(FILE_TX_UUID)
