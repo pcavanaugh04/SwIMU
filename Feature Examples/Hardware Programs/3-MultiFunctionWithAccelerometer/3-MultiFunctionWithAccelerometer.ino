@@ -1,6 +1,6 @@
 /*****************************************************************************/
 /*  
-  2-MultiFunctionWithAccelerometer.ino
+  3-MultiFunctionWithAccelerometer.ino
   Hardware:      Seeed XIAO BLE Sense - nRF52840
 	Arduino IDE:   Arduino-2.3.4
 	Author:	       pcavanaugh04
@@ -43,11 +43,10 @@
 #include "LSM6DS3.h"
 #include "Wire.h"
 
-//Create a instance of class LSM6DS3
+//Create a instance of class LSM6DS3 for the onboard accelerometer
 LSM6DS3 myIMU(I2C_MODE, 0x6A);  //I2C device address 0x6A
 
 // Setup variables
-// const int numReadings = 1000;
 const int buttonPin = 0; // I/O pin where the button is connected
 // Pin assignments of the onbaord LED
 const int RED_LED = 12;
@@ -255,7 +254,6 @@ void loop() {
     float gyroY = myIMU.readFloatGyroY();
     float gyroZ = myIMU.readFloatGyroZ();
     
-    char accelDataLine[7] = {accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ};
     char accelBuffer[100];
     sprintf(accelBuffer, "Time: %.4f, Accel x,y,z: %.3f, %.3f, %.3f | Gyro x,y,z: %.3f, %.3f, %.3f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
     Serial.println(accelBuffer);
