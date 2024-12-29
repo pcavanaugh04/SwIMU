@@ -18,7 +18,7 @@
   out client and server to devices to stream real-time IMU data via BLE.
   This code configures the server device to accept a start command, read
   data and write it to a custom characteristic until we recieve the 
-  end command. The client script "client_BLE_IMUReadings_Demo.py" recieves
+  end command. The client script "client_BLE_connect_and_config.py" recieves
   these notificaitons with different methods. 
 
   Note, BLE is not the best way to accomplish this, but it's what's avialable
