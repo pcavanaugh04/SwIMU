@@ -78,8 +78,6 @@ async def tx_IMU_with_notify(client):
     # instances of the program running
      
     # Start a loop to run for 10s to read  the IMU_DATA characteristic
-    start_time = time.perf_counter()
-    run_time = 0
     data_list = []
     
     # define a callback function to process data when it arrives
@@ -95,11 +93,13 @@ async def tx_IMU_with_notify(client):
         
     # Configure the notification
     await client.start_notify(IMU_DATA_UUID, handle_IMU_notification)
+    
+    # Write the start request
     await client.write_gatt_char(IMU_REQUEST_UUID, b"START")
+    # Collect data for specified time
     await asyncio.sleep(end_time)
+    # Write the end request to stop transmitting
     await client.write_gatt_char(IMU_REQUEST_UUID, b"END")
-    # Because each action is not call/response, we have to setup a
-    # start/end notifcation from the client to ensure we're ready
 
     print("----------------- BLE Notify Implementation ---------------")    
     print(f"Number of data packets recieved in {end_time}s: {len(data_list)}")

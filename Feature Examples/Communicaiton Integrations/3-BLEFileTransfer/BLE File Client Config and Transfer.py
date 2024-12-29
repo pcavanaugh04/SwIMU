@@ -1,8 +1,27 @@
 # -*- coding: utf-8 -*-
 """
-Spyder Editor
+Welcome to the SwIMU device tutorial series. This is a series of tutorials
+to get you familiar with a few facets of sports engineering, product design
+and microcontroller programming. This is the first tutorial that uses a
+python editor to implement Bluetooth Low-Energy (BLE) between a local computer
+(client) and the SwIMU device (periphrial). Please complete the first 4 modules
+in the "Hardware Programs" tutorial folder to get familiar with the functions
+of the arduino device before starting this tutorial.
 
-This is a temporary script file.
+This makes use of the bleak library in python, which is an implementation of
+the BLE protocol in python. This provides functions to configure and
+communicate with BLE-endabled devices. In this tutorial we will accomplish the
+following things
+    - Configure our local computer as a BLE client
+    - Scan for BLE Devices in our area
+    - Connect to a BLE-enabled periphrial (SwIMU device)
+    - Recieve live IMU data from our SwIMU via notifications
+    
+The Bleak library utilizes asyncio to ensure waiting functions to not block
+the execution of the main program. There are a few requirements to run a
+program using asyncio in spyder including an async "main" function and nesting.
+This will be notated in the code below. For more info on asyncio, see here ->
+https://realpython.com/async-io-python/
 """
 
 # Bluetooth LE scanner
