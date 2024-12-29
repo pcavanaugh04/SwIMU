@@ -37,13 +37,6 @@
   utilizes a buffer and once the buffer is filled, it takes a bit more time to dump the
   files into the card. We can get ~500hz with our current method, which is good enough for me
   
-  This script is enough for your device to act as a datalogger! you can use the UI, 
-  accelerometer, and SD card to record motion data. However in this state you need to
-  have access to the SD card and transfer the files manually to do any further analysis.
-  Because this design will be waterproof, its disadventageous to have an enclosure that
-  opens easily. Therefore the next iteration of this script will employ bluetooth to
-  transmit files to a client computer wirelessly!
-  
   This library is free software; you can redistribute it and/or
   modify it under the terms of the GNU Lesser General Public
   License as published by the Free Software Foundation; either
