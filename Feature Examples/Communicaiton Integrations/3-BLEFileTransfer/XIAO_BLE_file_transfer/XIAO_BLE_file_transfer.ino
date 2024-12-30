@@ -84,6 +84,70 @@ String bytesToString(byte* data, int length) {
   return finalString;
 }
 
+
+void findFileToTx() {
+  // For now we'll identify and transmit the latest file in the accelDir directory 
+  File accelDir =  SD.open("/accelDir");
+  unsigned long latestTimeStamp = 0;
+  fileTxMode = false;
+  if (!accelDir || !accelDir.isDirectory()) {
+      Serial.println("Directory not found or error opening it.");
+      return;
+    }
+  
+  // Cycle through the directory and identify the most recent timestamp from metadata
+  while (true) {
+    File entry = accelDir.openNextFile();
+    if (!entry) break; // No more files
+
+    if (!entry.isDirectory() && !(entry.name() == "counter.txt")) {
+      dataFileName = entry.name(); // Assign the new most recent file
+      entry.close();
+    }
+    accelDir.close();
+  }
+  if (dataFileName.length() > 0) {
+    fileNameResponseChar.writeValue(dataFileName);
+  }
+}
+
+
+void transmitFileData() {
+  // Open the specified file
+  String filePath = "accelDir/" + dataFileName;
+  Serial.print("Attempting to open file: ");
+  Serial.println(filePath);
+        // Check to see if file exists
+  if (!SD.exists(filePath)){
+    Serial.println("ERROR: FIle not recognized!");
+  }
+  File dataFile = SD.open(filePath.c_str(), FILE_READ);
+  Serial.println(dataFile.name());
+  // Create a time counter for funsies
+  int txStartTime = millis();
+  Serial.println("File opened. Transmitting...");
+  // Parse through the datafile, chunking data into payloads and transmitting
+  // each payload sequentially
+  while (dataFile.available()) {
+    char buffer[fileTxBufferSize]; // Create a buffer to fill with data
+    int bytesRead = dataFile.read(buffer, fileTxBufferSize);
+    // Serial.print(buffer);
+    // Write the full buffer to the characteristic
+    fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
+    delay(30); // Small delay to prevent BLE stack overflow
+
+  }
+  int txElapsedTime = millis() - txStartTime;
+  // Send a notification when the end is reached
+  fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
+  Serial.print("File transmission completed in:");
+  Serial.print(txElapsedTime);
+
+  // Close the file
+  dataFile.close();
+}
+
+
 void onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
   // Handle event for central writing to the dateTime characteristic
   int length = characteristic.valueLength();
@@ -92,66 +156,14 @@ void onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
   String fileTxRequest = bytesToString(data, length);
   
   Serial.println("Request Recieved: " + fileTxRequest);
-  // If we've recieved a start command, switch the flag to true
   if (fileTxRequest.equals("SEND_FILE")) {
-    // For now we'll identify and transmit the latest file in the accelDir directory 
-    File accelDir =  SD.open("/accelDir");
-    String dataFileName;
-    unsigned long latestTimeStamp = 0;
-    fileTxMode = false;
-    if (!accelDir || !accelDir.isDirectory()) {
-        Serial.println("Directory not found or error opening it.");
-        return;
-      }
-    // Cycle through the directory and identify the most recent timestamp from metadata
-    while (true) {
-      File entry = accelDir.openNextFile();
-      if (!entry) break; // No more files
-
-      if (!entry.isDirectory() && !(entry.name() == "counter.txt")) {
-        dataFileName = entry.name(); // Assign the new most recent file
-        entry.close();
-      }
-      accelDir.close();
-    }
-    if (dataFileName.length() > 0) {
-      fileNameResponseChar.writeValue(dataFileName);
-    }
+    findFileToTx();
   }
   
+  // If "Start" is written to the charactyeristic, then the client is ready to recieve data
   else if (fileTxRequest.equals("START")) {
-    File dataFile = SD.open("/accelDir/" + dataFileName);
-    int txStartTime = millis();
-    Serial.println("File opened. Transmitting...");
-    while (dataFile.available()) {
-      char buffer[fileTxBufferSize]; // BLE max payload size is typically 512 bytes
-      int bytesRead = dataFile.read(buffer, fileTxBufferSize);
-      // Convert buffer into a byte array
-      // byte byteBuffer[bytesRead] = {byte(atoi(buffer))};
-      // String bufferStr = String(buffer);
-      // Serial.print("Contents of Buffer: ");
-      // Serial.println(buffer);
-      // Send the data over BLE
-      // fileTransferDataChar.writeValue("Test Buffer Line");
-      // String transferBuffer = buffer;
-      // Serial.print(buffer);
-      fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
-
-      delay(30); // Small delay to prevent BLE stack overflow
-      // Serial.print("Loop time [ms]: ");
-      // Serial.println(loopTime);
-      // break; // To try only one notificaiton
-    }
-    int txElapsedTime = millis() - txStartTime;
-    fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
-    Serial.print("File transmission completed in:");
-    Serial.print(txElapsedTime);
-
-    // Close the file and disconnect
-    dataFile.close();
+    transmitFileData();
   }
-
-
 }
 // From previous tutorials, useful to debug our SD card contents
 void displayDirectory(File dir, int numTabs=0) {
@@ -225,134 +237,11 @@ void loop() {
   // Serial.println("Discovering Central device");
   delay(500);
   
-  // Upon connection, index a start time before entering the broadcast loop
-  // String newValues = readAccel();
-  // Serial.print("New Readings from IMU: ");
-  // Serial.println(newValues);
   while (central.connected()) {
-    BLE.poll();
-
- /*
-  while ((central.connected()) && (fileTxMode == true)){
-    // Delay 10 seconds to simulate data collection
-    // Reconnect to the central, this would be done after entering fileTxMode in real time
-
-      // Procedure follows a handshake between the client and server to ensure file
-      // data is available and configured correctly on both sides of the transmission
-
-      // Grab the most recent file on the sd card
-      if (fileTransferRequestChar.written()) {
-        String value = String(fileTransferRequestChar.value().c_str());
-        Serial.print("Recieved Request Value: ");
-        Serial.println(value);
-        if (value == "Send_File") {
-          char dataFileName[30];
-          String rootFolder = "accelDir";
-          sprintf(dataFileName, "%s/DATA_%d.CSV", rootFolder.c_str(), currentCount);
-          Serial.print("Attempting to open file: ");
-          Serial.println(dataFileName);
-          // Check to see if file exists
-          if (SD.exists(dataFileName)) { //check for existing or duplicate file names
-            Serial.println("File exists");
-            fileNameChar.writeValue(dataFileName);
-          }
-
-          dataFile = SD.open(dataFileName, FILE_READ);
-          if (!dataFile) {
-            Serial.println("Failed to open file!");
-            fileNameChar.writeValue("ERROR");
-            central.disconnect();
-            return;
-          }
-        }
-        else if (value == "START") {
-          while (dataFile.available()) {
-            // Serial.println("File opened. Transmitting...");
-            int startTime = millis();
-            char buffer[fileTxBufferSize]; // BLE max payload size is typically 512 bytes
-            int bytesRead = dataFile.read(buffer, fileTxBufferSize);
-            // Convert buffer into a byte array
-            // byte byteBuffer[bytesRead] = {byte(atoi(buffer))};
-            // String bufferStr = String(buffer);
-            // Serial.print("Contents of Buffer: ");
-            // Serial.println(buffer);
-            // Send the data over BLE
-            // fileTransferDataChar.writeValue("Test Buffer Line");
-            // String transferBuffer = buffer;
-            // Serial.print(buffer);
-            fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
-
-            delay(30); // Small delay to prevent BLE stack overflow
-            int loopTime = startTime - millis();
-            // Serial.print("Loop time [ms]: ");
-            // Serial.println(loopTime);
-            // break; // To try only one notificaiton
-          }
-          fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
-          Serial.println("File transmission completed.");
-
-          // Close the file and disconnect
-          dataFile.close();
-          // Give time for client to process data
-          delay(5000);
-          central.disconnect();
-          Serial.println("Central disconnected.");
-          fileTxMode = false;
-          break;
-      }
-      */
-      // Await request from central:
-      // Read file contents and send via BLE
-      /*
-      if (fileNameChar.written()) {
-        String value = String(fileNameChar.value().c_str());
-        if (value == "ACK") {
-          while (dataFile.available()) {
-            Serial.println("File opened. Transmitting...");
-            char buffer[512]; // BLE max payload size is typically 512 bytes
-            size_t bytesRead = dataFile.readBytes(buffer, sizeof(buffer));
-
-            // Send the data over BLE
-            fileTransferDataChar.writeValue(buffer);
-
-            delay(20); // Small delay to prevent BLE stack overflow
-          }
-          fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
-          Serial.println("File transmission completed.");
-
-          // Close the file and disconnect
-          dataFile.close();
-          central.disconnect();
-          Serial.println("Central disconnected.");
-          fileTxMode = false;
-          break;
-        }
-      */
-      
-    }
+    // Since all our code is callback based, not alot going on here
+    BLE.poll();      
   }
-    // Further logic
-      // Keep loop going until we've recieved both pieces of information
-      // Once we've recieved both, config a new file name, indicate somehow that
-      // file has been configured and ready
-      // Disconnect Device
-
-    // Simulate logic to indicate device is in file transfer mode
-      // BLE goes to connect again with advertised fileTxService
-      // Device sends request to transfer with file name
-      // Central confirms readiness to recieve
-      // Device commensses file transfer
-      // Device notifies that file transfer is complete
-      // Central saves and closes file
-
-
-    // If we want to respond to a query, use this if structure a reading from the sensor
-    // if (imuResponseCharacteristic.written()) {}
-    // String newValues = readAccel();
-    // String newValues = readAccel();
-    // Serial.print("Value from readAccel: ");
-    // Serial.println(newValues);
-    // imuResponseCharacteristic.setValue(newValues);
+}
 
 
 

@@ -25,17 +25,14 @@ https://realpython.com/async-io-python/
 import asyncio
 import nest_asyncio
 import time
+import os
 from datetime import datetime
 from bleak import BleakScanner, BleakClient
 
-DATETIME_UUID = "550e8401-e29b-41d4-a716-446655440001"
-SWIMMERNAME_UUID = "550e8401-e29b-41d4-a716-446655440002"
 FILE_TX_REQUEST_UUID = "550e8403-e29b-41d4-a716-446655440001"
-FILE_NAME_UUID = "550e8403-e29b-41d4-a716-446655440004"
 FILE_TX_UUID = "550e8403-e29b-41d4-a716-446655440002"
 FILE_TX_COMPLETE_UUID = "550e8403-e29b-41d4-a716-446655440003"
-swimmer_name = "Patty Cavs"
-DT_FMT = "%Y_%m_%d_%H_%M_%S"
+FILE_NAME_UUID = "550e8403-e29b-41d4-a716-446655440004"
 
 nest_asyncio.apply()
 
@@ -53,22 +50,6 @@ async def main():
     
     # Context manager to configure device
     async with BleakClient(address, timeout=20) as client:
-        print("Device Connected for Configuration!")
-
-        services = client.services                
-        # Time delay to simulate user inputting values
-        # time.sleep(3)
-        
-        # Write to swimmer name characteristic
-        # await client.write_gatt_char(SWIMMERNAME_UUID, swimmer_name.encode("utf-8"))
-        # datetime_str = datetime.now().strftime(DT_FMT)
-        # await client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        # Write to datetime characteristic automatically
-     
-    # Simulated time to record data    
-    # await asyncio.sleep(5)
-    # Context manager to recieve data
-    # async with BleakClient(address, timeout=20) as client:
         print("Device Connected for File Transfer!")
         
         # Send Request for File transfer
@@ -79,7 +60,6 @@ async def main():
         if (file_name == "ERROR"):
             print("Error on Server accessing file!")
             return
-        
         print(f"Recieved file name: {file_name}")
         
         # setup variable to recieve file data
@@ -90,9 +70,6 @@ async def main():
             start_time = time.perf_counter()
             nonlocal file_data
             file_data += data
-            notif_time = time.perf_counter() - start_time
-            # print(f"Recieved {len(data)} bytes of data in {notif_time}s")
-            # print(f"data: {data.decode('utf-8')}")
         
         # Setup the notificaiton handler
         await client.start_notify(FILE_TX_UUID, handle_file_data)
@@ -108,34 +85,22 @@ async def main():
                 
         # config file complete notificaiton manager
         await client.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)
-        file_tx_start = time.perf_counter()
         # Acknowledge file name to indicate we're ready to recieve file data 
         await client.write_gatt_char(FILE_TX_REQUEST_UUID, b"START")
         print("Client Acknowledged File name. Beginning Transfer")
-        
-        # await asyncio.sleep(5)
+        file_tx_start = time.perf_counter()
+
         # Wait for transfer compltete notification
-        
         await transfer_complete
         print(f"File tx in {time.perf_counter() - file_tx_start} s")
-    
-        # Disconnect notifications
-        # await client.stop_notify(FILE_TX_UUID)
-        # await client.stop_notify(FILE_TX_COMPLETE_UUID)
+
         
     # Write recieved contents to file
-    with open(fr"C:\Users\patri\Downloads\{file_name.split('/')[-1]}", "wb") as f:
+    save_path = os.path.join(r"C:\Users\patri\Downloads", file_name.split('/')[-1])
+    with open(save_path, "wb") as f:
         f.write(file_data)
     
-    print(f"File saved as {file_name}.")
-        
-    """
-    // Further logic
-    // Keep loop going until we've recieved both pieces of information
-    // Once we've recieved both, config a new file name, indicate somehow that
-    // file has been configured and ready
-    // Disconnect Device
-    """
+    print(f"File saved locally to {save_path}.")
         
 if __name__ == "__main__":
     asyncio.run(main())
