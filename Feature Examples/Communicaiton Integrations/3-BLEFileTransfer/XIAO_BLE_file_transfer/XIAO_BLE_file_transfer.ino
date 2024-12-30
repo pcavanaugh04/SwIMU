@@ -1,54 +1,159 @@
+/*  
+  XIAO_BLE_IMUReadings_Demo.ino
+  Hardware:      Seeed XIAO BLE Sense - nRF52840
+	Arduino IDE:   Arduino-2.3.4
+	Author:	       pcavanaugh04
+	Date: 	       Dec,2024
+	Version:       v1.0
+
+  This tutorial is the 2nd part of the communication module in the tutorial 
+  for my swIMU project. This series is aimed to teach some of the
+  fundamentals of product design in sports technology applications, including
+  user interfaces, technical interfaces, and technical implementations. 
+
+  If you are just getting started... Go back to the first example!
+  
+  This tutorial continues our introduction to BLE communication by setting up a file
+  exchange between our server and client. We'll read an example file generated 
+  during the hardware tutorials 1-4 thats stored on our sd card, transmit the file
+  name, and file contents to the client.
+
+  Note, BLE is not the best way to accomplish this, but it's what's avialable
+  on the XIAO BLE Sense device. BLE is limited in bandwidth and not suitable
+  for continuous transfer. But it's good enough to demonstrate some of the
+  features
+  
+  This library is free software; you can redistribute it and/or
+  modify it under the terms of the GNU Lesser General Public
+  License as published by the Free Software Foundation; either
+  version 2.1 of the License, or (at your option) any later version.
+
+  This library is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+  Lesser General Public License for more details.
+
+  You should have received a copy of the GNU Lesser General Public
+  License along with this library; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+*/
 
 #include <SPI.h>
 #include <SD.h>
 #include <ArduinoBLE.h>
-#include <LSM6DS3.h>
 #include <string.h>
 
 // SD Card Setup
 const int chipSelect = 5;
 int currentCount;
 bool fileConfigMode = false;
-bool fileTxMode = true;
-String dateTime;
-String swimmerName;
-File dataFile;
-
+bool fileTxMode = false;
+String dataFileName;
 // BLE Setup
-// Service to config device for data recording
-const char * fileConfigServiceUuid = "550e8400-e29b-41d4-a716-446655440000";
-// Ensure First block of characteristic UUID is incremented +1 of Service UUID
-const char * fileConfigDateTimeCharUuid = "550e8401-e29b-41d4-a716-446655440001";
-const char * fileConfigNameCharUuid = "550e8401-e29b-41d4-a716-446655440002";
 
 // Service to transfer file data
 const char * fileTransferServiceUuid = "550e8402-e29b-41d4-a716-446655440000";
-// Ensure First block of characteristic UUID is incremented +1 of Service UUID
+// Associated characteristics to read/write from
 const char * fileTransferRequestCharUuid = "550e8403-e29b-41d4-a716-446655440001";
 const char * fileTransferDataCharUuid = "550e8403-e29b-41d4-a716-446655440002";
 const char * fileTransferCompleteCharUuid = "550e8403-e29b-41d4-a716-446655440003";
-const char * fileNameCharUuid = "550e8403-e29b-41d4-a716-446655440004";
+const char * fileNameResponseCharUuid = "550e8403-e29b-41d4-a716-446655440004";
 
 // Experiment with buffer size of file tx chunks
+// Data is transmitted sequentially over BLE, and is limited by the packet size config
+// of the device and client, through trial and error, I found out the max size was 244
+// bytes. Weird.
 const int fileTxBufferSize = 244; // Oddly enough this seems to be the bandwidth of the string Char
-const bool fixedLength = false;
-// Accelerometer Variables
-unsigned long accelStartMillis;
-unsigned long numSamples = 0;
-float accelTime;
-//Create a instance of class LSM6DS3
-LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
-
-BLEService fileConfigService(fileConfigServiceUuid);
-BLEStringCharacteristic fileConfigDateTimeChar(fileConfigDateTimeCharUuid, BLERead | BLEWrite, 20);
-BLEStringCharacteristic fileConfigNameChar(fileConfigNameCharUuid, BLEWrite, 20);
 
 BLEService fileTransferService(fileTransferServiceUuid);
+// We'll use this characteristic to accept requests and respond to the request with the file name
 BLEStringCharacteristic fileTransferRequestChar(fileTransferRequestCharUuid, BLEWrite, 10);
-BLEStringCharacteristic fileNameChar(fileNameCharUuid, BLERead | BLENotify, 50);
-BLECharacteristic fileTransferDataChar(fileTransferDataCharUuid, BLENotify, fileTxBufferSize, fixedLength);
+// Characteristic to be used to send the data
+BLECharacteristic fileTransferDataChar(fileTransferDataCharUuid, BLENotify, fileTxBufferSize, false);
+// Transfer complete notification to signal to the client to move on
 BLEStringCharacteristic fileTransferCompleteChar(fileTransferCompleteCharUuid, BLENotify, 30);
+BLEStringCharacteristic fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60);
 
+String bytesToString(byte* data, int length) {
+  char charArray[length + 1];
+  for (int i=0; i < length; i++) {
+    charArray[i] = (char)data[i];
+  }
+  charArray[length] = '\0';
+  String finalString = String(charArray);
+  return finalString;
+}
+
+void onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
+  // Handle event for central writing to the dateTime characteristic
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  String fileTxRequest = bytesToString(data, length);
+  
+  Serial.println("Request Recieved: " + fileTxRequest);
+  // If we've recieved a start command, switch the flag to true
+  if (fileTxRequest.equals("SEND_FILE")) {
+    // For now we'll identify and transmit the latest file in the accelDir directory 
+    File accelDir =  SD.open("/accelDir");
+    String dataFileName;
+    unsigned long latestTimeStamp = 0;
+    fileTxMode = false;
+    if (!accelDir || !accelDir.isDirectory()) {
+        Serial.println("Directory not found or error opening it.");
+        return;
+      }
+    // Cycle through the directory and identify the most recent timestamp from metadata
+    while (true) {
+      File entry = accelDir.openNextFile();
+      if (!entry) break; // No more files
+
+      if (!entry.isDirectory() && !(entry.name() == "counter.txt")) {
+        dataFileName = entry.name(); // Assign the new most recent file
+        entry.close();
+      }
+      accelDir.close();
+    }
+    if (dataFileName.length() > 0) {
+      fileNameResponseChar.writeValue(dataFileName);
+    }
+  }
+  
+  else if (fileTxRequest.equals("START")) {
+    File dataFile = SD.open("/accelDir/" + dataFileName);
+    int txStartTime = millis();
+    Serial.println("File opened. Transmitting...");
+    while (dataFile.available()) {
+      char buffer[fileTxBufferSize]; // BLE max payload size is typically 512 bytes
+      int bytesRead = dataFile.read(buffer, fileTxBufferSize);
+      // Convert buffer into a byte array
+      // byte byteBuffer[bytesRead] = {byte(atoi(buffer))};
+      // String bufferStr = String(buffer);
+      // Serial.print("Contents of Buffer: ");
+      // Serial.println(buffer);
+      // Send the data over BLE
+      // fileTransferDataChar.writeValue("Test Buffer Line");
+      // String transferBuffer = buffer;
+      // Serial.print(buffer);
+      fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
+
+      delay(30); // Small delay to prevent BLE stack overflow
+      // Serial.print("Loop time [ms]: ");
+      // Serial.println(loopTime);
+      // break; // To try only one notificaiton
+    }
+    int txElapsedTime = millis() - txStartTime;
+    fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
+    Serial.print("File transmission completed in:");
+    Serial.print(txElapsedTime);
+
+    // Close the file and disconnect
+    dataFile.close();
+  }
+
+
+}
+// From previous tutorials, useful to debug our SD card contents
 void displayDirectory(File dir, int numTabs=0) {
   while (true) {
     File entry = dir.openNextFile();
@@ -68,38 +173,6 @@ void displayDirectory(File dir, int numTabs=0) {
     }
     entry.close();
   }
-}
-
-String readAccel() {
-
-      // Serial.println("Entering Read Accel Method");
-      accelTime = (float)(millis() - accelStartMillis) / 1000;
-      //Serial.println("Past accelTime Calculation");
-      char accelBuffer[100];
-      float accelX = myIMU.readFloatAccelX();
-      // Serial.println("Read aX");
-      float accelY = myIMU.readFloatAccelY();
-      // Serial.println("Read aY");
-      float accelZ = myIMU.readFloatAccelZ();
-      // Serial.println("Read aZ");
-      float gyroX = myIMU.readFloatGyroX();
-      // Serial.println("Read gX");
-      float gyroY = myIMU.readFloatGyroY();
-      // Serial.println("Read gY");
-      float gyroZ = myIMU.readFloatGyroZ();
-      // Serial.println("Read gZ");
-      sprintf(accelBuffer, "%.5f, %.4f, %.4f, %.4f, %.4f, %.4f, %.4f", accelTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
-      // Serial.print("Constructed Accel Buffer: ");
-      // Serial.println(accelBuffer);
-      // Serial.print("With size of: ");
-      // Serial.println(sizeof(accelBuffer));
-
-      // Serial.print("From inside readAccel function: ");
-      // Serial.println(accelBuffer);
-      return String(accelBuffer);
-      // Serial.println(accelBuffer);
-      // accelDataFile.println(accelBuffer);
-      // numSamples = numSamples + 6;
 }
 
 void setup() {
@@ -123,23 +196,6 @@ void setup() {
   displayDirectory(root);
   root.close();
   
-  // Read contents of counter file to determine most recent file
-  File counterFileContents = SD.open("accelDir/counter.txt", FILE_READ);
-  if (counterFileContents) {
-    currentCount = counterFileContents.parseInt();
-    counterFileContents.close();
-  }
-  
-  else Serial.println("Error opening Counter File!");
-  
-  // Accelerometer Init
-  if (myIMU.begin() != 0) {
-    Serial.println("Device error");
-  } 
-  else {
-    Serial.println("Device OK!");
-  }
-
   BLE.setDeviceName("SwIMU");
   BLE.setLocalName("SwIMU");
 
@@ -149,20 +205,16 @@ void setup() {
   }
 
   // Add characteristics to services, add services to device
-  fileConfigService.addCharacteristic(fileConfigDateTimeChar);
-  fileConfigService.addCharacteristic(fileConfigNameChar);
-  BLE.addService(fileConfigService);
-
   fileTransferService.addCharacteristic(fileTransferRequestChar);
   fileTransferService.addCharacteristic(fileTransferDataChar);
-  fileTransferService.addCharacteristic(fileNameChar);
   fileTransferService.addCharacteristic(fileTransferCompleteChar);
+  fileTransferService.addCharacteristic(fileNameResponseChar);
   BLE.addService(fileTransferService);
 
-  // Advertise file config service
-  BLE.setAdvertisedService(fileConfigService);
+  // Assign Callback
+  fileTransferRequestChar.setEventHandler(BLEWritten, onFileTxRequest);
 
-  fileConfigDateTimeChar.writeValue("90");
+  // Advertise file config service
   BLE.advertise();
   Serial.println("BLE device ready to connect");
 }
@@ -174,55 +226,13 @@ void loop() {
   delay(500);
   
   // Upon connection, index a start time before entering the broadcast loop
-  if (central.connected())
-  {
-    accelStartMillis = millis();
-    Serial.println("New Value of Start Millis: ");
-    Serial.println(accelStartMillis);
-    // Delay in connection to allow central time to config services
-    delay(1);
-  }
   // String newValues = readAccel();
   // Serial.print("New Readings from IMU: ");
   // Serial.println(newValues);
-  while (central.connected() && (fileConfigMode == true)) {
-    // poll until both name and datetime Chars have been written to
-    if (fileConfigDateTimeChar.written()) {
-      dateTime = String(fileConfigDateTimeChar.value());
-      Serial.print("Received DateTime Value: ");
-      Serial.println(dateTime);
-    }
+  while (central.connected()) {
+    BLE.poll();
 
-    if (fileConfigNameChar.written()) {
-      swimmerName = String(fileConfigNameChar.value());
-      Serial.print("Received Name Value: ");
-      Serial.println(swimmerName);
-    }
-
-    if ((dateTime.length() > 0) && (swimmerName.length() > 0)) {
-      char fileNameBuffer[100];
-      sprintf(fileNameBuffer, "%s-%s.csv", dateTime.c_str(), swimmerName.c_str());
-      Serial.println(fileNameBuffer);
-      // Disconnect from central and exit config loop 
-      central.disconnect();
-      fileConfigMode = false;
-      fileTxMode = true;
-
-    }
-
-    else {
-      Serial.println("Connected and Awaiting dateTime and swimmerName Variables.");
-    }
-
-    delay(500);
-  }
-
-  if (fileTxMode == true) {
-    BLE.setAdvertisedService(fileTransferService);
-    // fileTransferDataChar.writeValue("Ready to Transmit");
-    BLE.advertise();
-  }
-
+ /*
   while ((central.connected()) && (fileTxMode == true)){
     // Delay 10 seconds to simulate data collection
     // Reconnect to the central, this would be done after entering fileTxMode in real time
@@ -290,6 +300,7 @@ void loop() {
           fileTxMode = false;
           break;
       }
+      */
       // Await request from central:
       // Read file contents and send via BLE
       /*
@@ -317,7 +328,7 @@ void loop() {
           break;
         }
       */
-      }
+      
     }
   }
     // Further logic

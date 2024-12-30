@@ -2,7 +2,7 @@
 """
 Welcome to the SwIMU device tutorial series. This is a series of tutorials
 to get you familiar with a few facets of sports engineering, product design
-and microcontroller programming. This is the first tutorial that uses a
+and microcontroller programming. This is the third tutorial that uses a
 python editor to implement Bluetooth Low-Energy (BLE) between a local computer
 (client) and the SwIMU device (periphrial). Please complete the first 4 modules
 in the "Hardware Programs" tutorial folder to get familiar with the functions
@@ -12,10 +12,8 @@ This makes use of the bleak library in python, which is an implementation of
 the BLE protocol in python. This provides functions to configure and
 communicate with BLE-endabled devices. In this tutorial we will accomplish the
 following things
-    - Configure our local computer as a BLE client
-    - Scan for BLE Devices in our area
-    - Connect to a BLE-enabled periphrial (SwIMU device)
-    - Recieve live IMU data from our SwIMU via notifications
+    - configure and connect our local device as a BLE client
+    - request and recieve a file from a BLE server
     
 The Bleak library utilizes asyncio to ensure waiting functions to not block
 the execution of the main program. There are a few requirements to run a
@@ -23,9 +21,6 @@ program using asyncio in spyder including an async "main" function and nesting.
 This will be notated in the code below. For more info on asyncio, see here ->
 https://realpython.com/async-io-python/
 """
-
-# Bluetooth LE scanner
-# Prints the name and address of every nearby Bluetooth LE device
 
 import asyncio
 import nest_asyncio
@@ -60,13 +55,7 @@ async def main():
     async with BleakClient(address, timeout=20) as client:
         print("Device Connected for Configuration!")
 
-        services = client.services
-        for service in services:
-            for char in service.characteristics:
-                if char.uuid == FILE_TX_UUID:
-                    file_tx_char_obj = char
-                # print(f" Characteristic: {char}")
-                
+        services = client.services                
         # Time delay to simulate user inputting values
         # time.sleep(3)
         
@@ -79,11 +68,11 @@ async def main():
     # Simulated time to record data    
     # await asyncio.sleep(5)
     # Context manager to recieve data
-    async with BleakClient(address, timeout=20) as client:
+    # async with BleakClient(address, timeout=20) as client:
         print("Device Connected for File Transfer!")
         
         # Send Request for File transfer
-        await client.write_gatt_char(FILE_TX_REQUEST_UUID, b"Send_File")
+        await client.write_gatt_char(FILE_TX_REQUEST_UUID, b"SEND_FILE")
         # Wait for server to send file name
         file_name = await client.read_gatt_char(FILE_NAME_UUID)
         file_name = file_name.decode("utf-8")
@@ -107,7 +96,7 @@ async def main():
         
         # Setup the notificaiton handler
         await client.start_notify(FILE_TX_UUID, handle_file_data)
-
+    
         # Initialize a Future event to hold until file transfer is complete
         transfer_complete = asyncio.Future()
         
@@ -128,8 +117,8 @@ async def main():
         # Wait for transfer compltete notification
         
         await transfer_complete
-        print(f"File tx in {time.perf_counter() - file_tx_start}s")
-
+        print(f"File tx in {time.perf_counter() - file_tx_start} s")
+    
         # Disconnect notifications
         # await client.stop_notify(FILE_TX_UUID)
         # await client.stop_notify(FILE_TX_COMPLETE_UUID)
