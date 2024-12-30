@@ -95,6 +95,39 @@ const char* readAccel() {
   return accelBuffer;
 }
 
+String bytesToString(byte* data, int length) {
+  char charArray[length + 1];
+  for (int i=0; i < length; i++) {
+    charArray[i] = (char)data[i];
+  }
+  charArray[length] = '\0';
+  String finalString = String(charArray);
+  return finalString;
+}
+
+void onIMURequest(BLEDevice central, BLECharacteristic characteristic) {
+  // Handle event for central writing to the dateTime characteristic
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  String imuRequest = bytesToString(data, length);
+  
+  Serial.println("Request Recieved: " + imuRequest);
+  // If we've recieved a start command, switch the flag to true
+  if (imuRequest.equals("START")) {
+    TxActive = true;
+    numSamples = 0;
+  }
+
+  // If we recieve a stop command, switch command to false and calc data rate
+  // of the session
+  else {
+    TxActive = false;
+    float freq = numSamples/accelTime;
+    Serial.println("Realized Data Frequency [Hz]: " + String(freq));
+  }
+}
+
 void setup() {
   
   // Accelerometer Init
@@ -117,6 +150,7 @@ void setup() {
   // broadcast service to central devices for connections
   imuService.addCharacteristic(imuRequestCharacteristic);
   imuService.addCharacteristic(imuDataCharacteristic);
+  imuRequestCharacteristic.setEventHandler(BLEWritten, onIMURequest);
   BLE.addService(imuService);
   BLE.setAdvertisedService(imuService);
   BLE.advertise();
@@ -141,26 +175,7 @@ void loop() {
   }
 
   while (central.connected()) {
-    // start each loop with a check to the response characteristic to see if
-    // weve recieved new instructions from the client
-    if (imuRequestCharacteristic.written()) {
-      String request = String(imuRequestCharacteristic.value());
-      Serial.println("Request Recieved: " + request);
-      // If we've recieved a start command, switch the flag to true
-      if (request.equals("START")) {
-        TxActive = true;
-        numSamples = 0;
-      }
-
-      // If we recieve a stop command, switch command to false and calc data rate
-      // of the session
-      else {
-        TxActive = false;
-        float freq = numSamples/accelTime;
-        Serial.println("Realized Data Frequency [Hz]: " + String(freq));
-      }
-    }
-
+    BLE.poll();
     if(TxActive == true) {
       const char* newValues = readAccel();
       // Serial.print("Value from readAccel: " + newValues);
