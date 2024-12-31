@@ -262,10 +262,11 @@ void handleButtonEvent() {
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
       if (buttonPressDuration > 3) {
-        Serial.println("Entering Bluetooth Pairing Mode!");
+        // Serial.println("Entering Bluetooth Pairing Mode!");
         inBLEConfigMode = true;
         if (bleManager.enterConfigMode()) {
           //Perform connection procedure
+          Serial.println("Entering Bluetooth Config Mode.");
         }
 
         else {
@@ -324,7 +325,7 @@ void loop() {
 
   // Depending on mode, do different things
   if (inBLEConfigMode == true) {
-    ledBlink(1000, 1000, BLUE_LED, ledBlueTimer);
+    ledBlink(900, 1100, BLUE_LED, ledBlueTimer);
     bleManager.poll();
   }
 

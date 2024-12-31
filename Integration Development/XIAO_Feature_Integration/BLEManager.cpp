@@ -23,7 +23,7 @@ Contains:
 
 #include "BLEManager.h"
 
-static std::map<BLECharacteristic*, BLEManager*> characteristicToInstanceMap;
+static std::map<const char*, BLEManager*> characteristicToInstanceMap;
 
 String bytesToString(byte* data, const int length) {
   char charArray[length + 1];
@@ -35,35 +35,42 @@ String bytesToString(byte* data, const int length) {
 }
 
 static void staticOnIMURequest(BLEDevice central, BLECharacteristic characteristic) {
-  BLEManager* instance = characteristicToInstanceMap[&characteristic];
+  BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
   if (instance) {
       instance->onIMURequest(central, characteristic);
   }
 }
 
 static void staticOnDateTimeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
-  BLEManager* instance = characteristicToInstanceMap[&characteristic];
+  BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
   if (instance) {
       instance->onDateTimeCharWritten(central, characteristic);
   }  
 }
 
 static void staticOnPersonNameCharWritten(BLEDevice central, BLECharacteristic characteristic) {
-  BLEManager* instance = characteristicToInstanceMap[&characteristic];
+  Serial.println("Recieved Callback to Static Person Name!");
+  Serial.print("Value of characteristic UUID: ");
+  Serial.println(characteristic.uuid());
+  Serial.print("Value of characteristic Address in Callback: ");
+  Serial.println((uintptr_t)&characteristic, HEX);
+    BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
+  Serial.print("Value of instance:");
+  Serial.println(bool(instance));
   if (instance) {
       instance->onPersonNameCharWritten(central, characteristic);
   }  
 }
 
 static void staticOnActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
-  BLEManager* instance = characteristicToInstanceMap[&characteristic];
+  BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
   if (instance) {
       instance->onActivityTypeCharWritten(central, characteristic);
   }  
 }
 
 static void staticOnFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
-  BLEManager* instance = characteristicToInstanceMap[&characteristic];
+  BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
   if (instance) {
       instance->onFileTxRequest(central, characteristic);
   }  
@@ -108,11 +115,11 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
   dataRecorder = dataRecorder;
 
   // Map characteristics that will be used for event handlers
-  characteristicToInstanceMap[&imuRequestChar] = this;
-  characteristicToInstanceMap[&dateTimeConfigChar] = this;
-  characteristicToInstanceMap[&personNameConfigChar] = this;
-  characteristicToInstanceMap[&activityTypeConfigChar] = this;
-  characteristicToInstanceMap[&fileTxRequestChar] = this;
+  characteristicToInstanceMap[imuRequestChar.uuid()] = this;
+  characteristicToInstanceMap[dateTimeConfigChar.uuid()] = this;
+  characteristicToInstanceMap[personNameConfigChar.uuid()] = this;
+  characteristicToInstanceMap[activityTypeConfigChar.uuid()] = this;
+  characteristicToInstanceMap[fileTxRequestChar.uuid()] = this;
   // Keep these open for onConnect and onDisconnect;
   // characteristicToInstanceMap[&imuRequestChar] = this;
   // characteristicToInstanceMap[&imuRequestChar] = this;
@@ -151,6 +158,9 @@ void BLEManager::startBLE() {
     while(1);
   }
   
+  Serial.print("Value of characteristic Address in Map definition: ");
+  Serial.println((uintptr_t)&personNameConfigChar, HEX);
+
   BLE.addService(configInfoService);
   BLE.addService(imuTxService);
   BLE.addService(fileTxService);
