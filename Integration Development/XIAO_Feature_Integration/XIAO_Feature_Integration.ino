@@ -57,14 +57,10 @@
 */
 /*******************************************************************************/
 
-#include <LSM6DS3.h>
-#include <Wire.h>
-#include <SD.h>
-#include <ArduinoBLE.h>
 #include <string.h>
+#include <ArduinoBLE.h>
 #include "DataRecorder.h"
-
-//Create a instance of class LSM6DS3 for the onboard accelerometer
+// #include "BLEManager.h"
 
 // Setup variables
 const int buttonPin = 0;  // I/O pin where the button is connected
@@ -75,7 +71,7 @@ const int BLUE_LED = 14;
 const int chipSelect = 5;  // Digital I/O pin needed for the SPI breakout
 
 // Create instance of a DataRecorder class to encapsulate data reading and file recording
-DataRecorder dataRecorder = DataRecorder(chipSelect);
+DataRecorder dataRecorder = DataRecorder();
 // const unsigned long microsOverflowValue = 4294967295;
 
 // Button state varialbles - Functions reviewed in previous tutorials
@@ -275,13 +271,12 @@ void handleButtonEvent() {
         dataRecorder.startDataRecording(defaultName);
         }
       }
-    }
     // Single press and hold indicates an exit event. Code will exit from whichever mode was previously active
     if (consecutiveButtonPresses == 1 && buttonPressDuration > 3) {
       modeExitChecks();
-        
-        
-  // Reset variables at end of handling sequence
+    } 
+       
+    // Reset variables at end of handling sequence
     newButtonSequence = false;
     consecutiveButtonPresses = 1;   
   }
@@ -304,6 +299,7 @@ void setup() {
   digitalWrite(chipSelect, HIGH);
 
   delay(1000);
+  dataRecorder.initDevices(chipSelect);
   dataRecorder.displayDirectory();
 }
 

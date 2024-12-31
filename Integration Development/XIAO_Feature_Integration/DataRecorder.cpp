@@ -1,4 +1,4 @@
-#include <LSM6DS3.h>
+
 
 //========================================================//
 /* Header File for Data Recorder library for SwIMU project
@@ -13,23 +13,32 @@ Contains:
 #include "DataRecorder.h"
 
 // Class Constructor
-DataRecorder::DataRecorder(int chipSelect) {
-  chipSelect = chipSelect;
+DataRecorder::DataRecorder() {
+  // Serial.println(chipSelect);
+  // chipSelect = chipSelect;
   // Initialize IMU Sensor
   imuSensor = LSM6DS3(I2C_MODE, 0x6A);
+}
+
+void DataRecorder::initDevices(int chipSelect) {
+  // This needs to be called in the main .setup() function!
+  // Or else the program will not upload
   if (imuSensor.begin() != 0) {
     Serial.println("IMU initialization failed!");
   }
   else {
     Serial.println("IMU initialized successfully.");
   }
+
   // Initialize SD Card
+  Serial.print("Initializing on pin: ");
+  Serial.println(chipSelect);
   if (!SD.begin(chipSelect)) {
     Serial.println("SD card initialization failed!");
     return;
   }
   Serial.println("SD card initialized successfully.");
-}
+} 
 
 void DataRecorder::displayDirectory(const char* dirName, int numTabs) {
   File dir = SD.open(dirName);

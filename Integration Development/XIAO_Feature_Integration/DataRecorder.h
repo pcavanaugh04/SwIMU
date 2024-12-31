@@ -43,18 +43,19 @@ class DataRecorder {
     // SD Card file variables
     // int currentCount;
     File imuDataFile;                   // data file object to be used for writing during record mode
-    int chipSelect{};                     // Chip select pin to be input by the constructor
+    // int chipSelect{};                     // Chip select pin to be input by the constructor
     void updateWhiteList();               // Update whitelist of files for transmitting
   
   // Public variables and functions
   public:
-    DataRecorder(int chipSelect); // Constructor
-    DataRecorder() = default;             //
+    DataRecorder(); // Constructor
     void displayDirectory(const char* dirName="/", int numTabs=0);  // Print out the contents of the onbaord SD card
     char* readIMU();                      // Read Values from the onboard IMU
     void startDataRecording(const char* fileName);  // Start Data recording with a specified fileName
     void stopDataRecording();             // Stop data recording and close file
     void clearWhiteList();                // Clear Whitelist of files after transmitting
+    void initDevices(int chipSelect);
+
 };
 
 #endif 
