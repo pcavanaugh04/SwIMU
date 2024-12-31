@@ -37,8 +37,8 @@ class DataRecorder {
     // const float dataPerioduS = 1 / dataRateHz * 1000000;  // Config data read event
     unsigned long dataReadTime;           // timestamp for last data read event
     LSM6DS3 imuSensor;                        // Object for onbarod IMU sensor
-    char rootDir[10] = "accelDir/";  // Default data directory onboard SD card
-    char whiteListPath[25] = "accelDir/whitelist.txt";
+    char rootDir[12] = "accelDir/";  // Default data directory onboard SD card
+    // char whiteListPath[25] = "accelDir/whitelist.txt";
     bool recording = false;
     // SD Card file variables
     // int currentCount;

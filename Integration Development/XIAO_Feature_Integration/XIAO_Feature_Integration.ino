@@ -60,7 +60,7 @@
 #include <string.h>
 #include <ArduinoBLE.h>
 #include "DataRecorder.h"
-// #include "BLEManager.h"
+#include "BLEManager.h"
 
 // Setup variables
 const int buttonPin = 0;  // I/O pin where the button is connected
@@ -72,6 +72,7 @@ const int chipSelect = 5;  // Digital I/O pin needed for the SPI breakout
 
 // Create instance of a DataRecorder class to encapsulate data reading and file recording
 DataRecorder dataRecorder = DataRecorder();
+BLEManager bleManager = BLEManager(dataRecorder);
 // const unsigned long microsOverflowValue = 4294967295;
 
 // Button state varialbles - Functions reviewed in previous tutorials
@@ -96,7 +97,7 @@ bool inBLETxMode = false;
 unsigned long ledRedTimer = 0;
 unsigned long ledBlueTimer = 0;
 unsigned long ledGreenTimer = 0;
-
+/*
 // ----------------------------- BLE Configs ---------------------------- //
 // File Config Service and Characteristics
 const char* configInfoServiceUuid = "550e8400-e29b-41d4-a716-446655440000";
@@ -130,7 +131,7 @@ BLEStringCharacteristic fileTransferRequestChar(fileTransferRequestCharUuid, BLE
 BLECharacteristic fileTransferDataChar(fileTransferDataCharUuid, BLENotify, fileTxBufferSize, false);
 BLEStringCharacteristic fileTransferCompleteChar(fileTransferCompleteCharUuid, BLENotify, 30);
 BLEStringCharacteristic fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60);
-
+*/
 
 //// going to need a good way to organize all this so it doesnt get spaghetti
 // Thinking of splitting things into modules, but dont see a huge need for custom classes. Yet
@@ -177,8 +178,9 @@ void modeExitChecks(){
   }
 
   else if (inBLEConfigMode == true) {
-    Serial.println("Exiting Bluetooth Pairing Mode!");
+    Serial.println("Exiting Bluetooth Config Mode!");
     inBLEConfigMode = false;
+    bleManager.exitConfigMode();
     digitalWrite(BLUE_LED, HIGH);  // Code to clean disconnect from client
   }
 
@@ -262,12 +264,13 @@ void handleButtonEvent() {
       if (buttonPressDuration > 3) {
         Serial.println("Entering Bluetooth Pairing Mode!");
         inBLEConfigMode = true;
+        bleManager.enterConfigMode();
       }
   // A short hold indicates starting accelerometer data recording
       else if (buttonPressDuration < 3) {
         Serial.println("Entering Data Record Mode!");
         inDataRecordMode = true;
-        const char* defaultName = "defaultName.csv";
+        const char* defaultName = "newFile1.csv";
         dataRecorder.startDataRecording(defaultName);
         }
       }
@@ -300,7 +303,9 @@ void setup() {
 
   delay(1000);
   dataRecorder.initDevices(chipSelect);
-  dataRecorder.displayDirectory();
+  bleManager.startBLE();
+  delay(1000);
+  dataRecorder.displayDirectory("accelDir");
 }
 
 void loop() {
@@ -311,15 +316,15 @@ void loop() {
 
   // Depending on mode, do different things
   if (inBLEConfigMode == true) {
-    ledBlink(100, 1900, BLUE_LED, ledBlueTimer);
-    // Other stuff to do in bluetooth pairing mode... COMING SOON
+    ledBlink(1000, 1000, BLUE_LED, ledBlueTimer);
+    bleManager.poll();
   }
 
   else if (inDataRecordMode == true) {
     ledBlink(100, 1900, RED_LED, ledRedTimer);
     // Check to see if assigned data rate has been met
     char* dataLine = dataRecorder.readIMU();
-    Serial.println(dataLine);
+    // Serial.println(dataLine);
     }
 
   else {

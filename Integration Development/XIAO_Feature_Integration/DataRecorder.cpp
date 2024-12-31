@@ -1,7 +1,5 @@
-
-
 //========================================================//
-/* Header File for Data Recorder library for SwIMU project
+/* C++ File for Data Recorder library for SwIMU project
 Contains:
   Classes
 
@@ -75,31 +73,38 @@ char* DataRecorder::readIMU() {
   float gyroZ = imuSensor.readFloatGyroZ();
   numSamples++;
   // Format in a string that will follow a CSV format
-  char accelBuffer[40];
   sprintf(imuBuffer, "%.4f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", imuTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
   // Print data line to serial monitor
   if (recording) {
     imuDataFile.println(imuBuffer);
   }
-  return accelBuffer;
+  return imuBuffer;
 }
 
 void DataRecorder::startDataRecording(const char* fileName) {
-  imuDataFile = SD.open(fileName, FILE_WRITE);
+  char filePath[50];
+  snprintf(filePath, sizeof(filePath), "%s%s", rootDir, fileName);
+
+  imuDataFile = SD.open(filePath, FILE_WRITE);
   if (!imuDataFile) {
-    Serial.println("Failed to open file");
+    Serial.print("Failed to open file: ");
+    Serial.println(filePath);
+    return;
   }
 
-  Serial.println("Data recording started");
+  Serial.print("Data recording started in: ");
+  Serial.println(filePath);
+
   imuStartMillis = millis();
   recording = true;
 }
 
 void DataRecorder::stopDataRecording() {
   if (imuDataFile) {
-    updateWhiteList();
     imuDataFile.close();
+    delay(1000);
     Serial.println("Data recording stopped and file closed");
+    updateWhiteList();
   }
   else {
     Serial.println("No available file to close!");
@@ -113,13 +118,23 @@ void DataRecorder::stopDataRecording() {
 
 void DataRecorder::updateWhiteList() {
   // This function updates the whitelist file that records files that haven't yet been transmitted
-  File whiteList = SD.open(whiteListPath, FILE_WRITE);
+  char newFilePath[50];
+  char* fileName = "send.txt";
+  snprintf(newFilePath, sizeof(newFilePath), "%s%s", rootDir, fileName);
+
+  File whiteList = SD.open(newFilePath, FILE_WRITE);
+  if (!whiteList) {
+    Serial.println("Error in opening whitelist file!");
+    return;
+  }
   whiteList.println(imuDataFile.name());
   whiteList.close();
 }
 
 void DataRecorder::clearWhiteList() {
   // Clear contents of the whitelist file. To be called after all files have been sent over BLE
-  File whiteList = SD.open(whiteListPath, O_TRUNC);
+  char filePath[50];
+  snprintf(filePath, sizeof(filePath), "%s%s", rootDir, "send.txt");
+  File whiteList = SD.open(filePath, O_TRUNC);
   whiteList.close();
 }

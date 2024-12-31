@@ -239,6 +239,7 @@ void handleButtonEvent() {
           Serial.println(currentCount);
           // Open a new data file with the appropriate name
           accelDataFile = SD.open(accelDir + fileName, FILE_WRITE);
+          Serial.println("Opening data file: " + accelDir + fileName);
           dataReadTime = micros();
         }
       }
