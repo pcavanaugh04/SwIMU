@@ -264,7 +264,15 @@ void handleButtonEvent() {
       if (buttonPressDuration > 3) {
         Serial.println("Entering Bluetooth Pairing Mode!");
         inBLEConfigMode = true;
-        bleManager.enterConfigMode();
+        if (bleManager.enterConfigMode()) {
+          //Perform connection procedure
+        }
+
+        else {
+          Serial.println("BLE config mode failed.");
+          inBLEConfigMode = false;
+          digitalWrite(BLUE_LED, HIGH);
+        }
       }
   // A short hold indicates starting accelerometer data recording
       else if (buttonPressDuration < 3) {
