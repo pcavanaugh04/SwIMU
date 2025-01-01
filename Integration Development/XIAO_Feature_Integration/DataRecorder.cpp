@@ -96,6 +96,7 @@ void DataRecorder::startDataRecording(const char* fileName) {
   Serial.println(filePath);
 
   imuStartMillis = millis();
+  numSamples = 0;
   recording = true;
 }
 
@@ -113,7 +114,6 @@ void DataRecorder::stopDataRecording() {
   Serial.print("Calculated Data Rate: ");
   Serial.println(calcHz);
   recording = false;
-  numSamples = 0;
 }
 
 void DataRecorder::updateWhiteList() {

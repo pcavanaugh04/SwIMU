@@ -30,7 +30,7 @@ Contains:
 String bytesToString(byte* data, const int length);
 
 // Static BLE Callbacks
-static void staticOnIMURequest(BLEDevice central, BLECharacteristic characteristic);
+static void staticOnIMUTxRequest(BLEDevice central, BLECharacteristic characteristic);
 static void staticOnDateTimeCharWritten(BLEDevice central, BLECharacteristic characteristic);
 static void staticOnPersonNameCharWritten(BLEDevice central, BLECharacteristic characteristic);
 static void staticOnActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic);
@@ -92,6 +92,8 @@ class BLEManager {
     unsigned long dateTimeRefrenceMillis; // refrence value for incrementing local timestamp
     const char* deviceName = "SwIMU";
     bool acceptNewConfig;
+    bool acceptIMUTxRequest;
+    bool imuTxActive;
     String dateTimeStr;
     String personName;
     String activityType;
@@ -102,8 +104,13 @@ class BLEManager {
     BLEManager(DataRecorder& dataRecorder); // Constructor
     bool enterConfigMode();
     void exitConfigMode();
+    bool enterIMUTxRecordMode();
+    void exitIMUTxRecordMode();
+    bool imuRecordandTx();
+    bool enterFileTxMode();
+    void exitFileTxMode();
     // BLE Callbacks;
-    void onIMURequest(BLEDevice central, BLECharacteristic characteristic);
+    void onIMUTxRequest(BLEDevice central, BLECharacteristic characteristic);
     void onDateTimeCharWritten(BLEDevice central, BLECharacteristic characteristic);
     void onPersonNameCharWritten(BLEDevice central, BLECharacteristic characteristic);
     void onActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic);

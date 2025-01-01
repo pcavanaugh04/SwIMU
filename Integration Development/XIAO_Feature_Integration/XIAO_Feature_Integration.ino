@@ -91,7 +91,7 @@ const unsigned long consecutivePressThreshold = 250;
 bool inDataRecordTxMode = false;
 bool inDataRecordMode = false;
 bool inBLEConfigMode = false;
-bool inBLETxMode = false;
+bool inFileTxMode = false;
 
 // Indicator Light Timers
 unsigned long ledRedTimer = 0;
@@ -163,15 +163,17 @@ void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVa
   }
 }
 
-void modeExitChecks(){
+void returnToStandbyMode() {
   // Function to be called when modes change, ensures clean exit of respective modes
-  if (inBLETxMode == true) {
-  inBLETxMode = false;
+  if (inFileTxMode == true) {
+    inFileTxMode = false;
+    bleManager.exitFileTxMode();
   // Code to clean disconnect from client
   }
 
   else if (inDataRecordTxMode == true) {
-  inDataRecordTxMode = false;
+    inDataRecordTxMode = false;
+    bleManager.exitIMUTxRecordMode();
   // Code to clean disconnect from client
   // Code to save and close file
   // Update whitelist file with new filenames
@@ -262,6 +264,22 @@ void handleButtonEvent() {
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
       if (buttonPressDuration > 3) {
+        Serial.println("Entering Data Record and Transmit Mode");
+        inDataRecordTxMode = true;
+        bleManager.enterIMUTxRecordMode();
+      }
+  // A short hold indicates starting accelerometer data recording
+      else {
+        Serial.println("Entering Data Record Mode!");
+        inDataRecordMode = true;
+        // Have some check to see if a valid file name has been recieved
+        String dataFileName = bleManager.getFileName();
+        dataRecorder.startDataRecording(dataFileName.c_str());
+        }
+      }
+    else if (consecutiveButtonPresses == 3) {
+      // 3 button presses enters pure BLE funcitonality. <3s on last press is config mode, >3s is fileTXMode
+      if (buttonPressDuration < 3) {
         // Serial.println("Entering Bluetooth Pairing Mode!");
         inBLEConfigMode = true;
         if (bleManager.enterConfigMode()) {
@@ -275,17 +293,25 @@ void handleButtonEvent() {
           digitalWrite(BLUE_LED, HIGH);
         }
       }
-  // A short hold indicates starting accelerometer data recording
-      else if (buttonPressDuration < 3) {
-        Serial.println("Entering Data Record Mode!");
-        inDataRecordMode = true;
-        const char* defaultName = "newFile1.csv";
-        dataRecorder.startDataRecording(defaultName);
+
+      else {
+        inFileTxMode = true;
+        if (bleManager.enterFileTxMode()) {
+          //Perform connection procedure
+          Serial.println("Entering BLE File Transfer Mode.");
+        }
+
+        else {
+          Serial.println("BLE File Transfer mode failed.");
+          inFileTxMode = false;
+          digitalWrite(BLUE_LED, HIGH);
         }
       }
+    }
+
     // Single press and hold indicates an exit event. Code will exit from whichever mode was previously active
-    if (consecutiveButtonPresses == 1 && buttonPressDuration > 3) {
-      modeExitChecks();
+    else if (consecutiveButtonPresses == 1 && buttonPressDuration > 3) {
+      returnToStandbyMode();
     } 
        
     // Reset variables at end of handling sequence
@@ -324,17 +350,27 @@ void loop() {
   handleButtonEvent();
 
   // Depending on mode, do different things
-  if (inBLEConfigMode == true) {
+  if (inBLEConfigMode) {
     ledBlink(900, 1100, BLUE_LED, ledBlueTimer);
     bleManager.poll();
   }
 
-  else if (inDataRecordMode == true) {
+  else if (inDataRecordMode) {
     ledBlink(100, 1900, RED_LED, ledRedTimer);
-    // Check to see if assigned data rate has been met
     char* dataLine = dataRecorder.readIMU();
     // Serial.println(dataLine);
     }
+
+  else if (inDataRecordTxMode) {
+    ledBlink(100, 400, RED_LED, ledRedTimer);
+    if (!bleManager.imuRecordandTx()) {
+      inDataRecordTxMode = false;
+    }
+  }
+
+  else if (inFileTxMode) {
+    ledBlink(100, 400, BLUE_LED, ledRedTimer);
+  }
 
   else {
     // Nothing Happening, in standby mode

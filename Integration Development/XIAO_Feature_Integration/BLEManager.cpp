@@ -37,7 +37,7 @@ String bytesToString(byte* data, const int length) {
 static void staticOnIMURequest(BLEDevice central, BLECharacteristic characteristic) {
   BLEManager* instance = characteristicToInstanceMap[characteristic.uuid()];
   if (instance) {
-      instance->onIMURequest(central, characteristic);
+      instance->onIMUTxRequest(central, characteristic);
   }
 }
 
@@ -177,7 +177,7 @@ void BLEManager::startBLE() {
 // ------------------ Getters and Setters -------------------- //
 
 String BLEManager::getFileName() {
-  return fileName;
+  return (getDateTimeStr() + "-" + personName + "-" + activityType;
 }
 
 void BLEManager::poll() {
@@ -268,7 +268,7 @@ void BLEManager::onPersonNameCharWritten(BLEDevice central, BLECharacteristic ch
   }
 }
 
- void BLEManager::onActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
+void BLEManager::onActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
 
   if (acceptNewConfig) {
     // Handle event for central writing to the dateTime characteristic
@@ -290,14 +290,85 @@ BLEDevice BLEManager::getCentral() {
   return BLE.central();
 }
 
+
+// ------------- IMU Tx and Record Mode Methods and Callbacks ----------- //
+bool BLEManager::enterIMUTxRecordMode() {
+  // Check to see if there's a valid file name
+  // Initiate a connection with client
+  central = getCentral();
+  if (central.connected()) {
+    acceptIMUTxRequest = true;
+    return true;
+  }
+
+  else {
+    Serial.println("Central not connected. Cannot Tx IMU Readings!");
+    return false;
+  }
+}
+void BLEManager::exitIMUTxRecordMode() {
+  acceptIMUTxRequest = false;
+  imuTxActive = false;
+  dataRecorder.stopDataRecording();
+  central = getCentral();
+  if (central.connected()){
+    central.disconnect();
+  }
+}
+
+void BLEManager::onIMUTxRequest(BLEDevice central, BLECharacteristic characteristic) {
+  if (acceptIMUTxRequest) {
+    int length = characteristic.valueLength();
+    byte data[length];
+    characteristic.readValue(data, length);
+    String imuRequest = bytesToString(data, length);
+    
+    Serial.println("Request Recieved: " + imuRequest);
+    // If we've recieved a start command, switch the flag to true
+    if (imuRequest.equals("START")) {
+      imuTxActive = true;
+      String dataFileName = getFileName();
+      dataRecorder.startDataRecording(dataFileName.c_str());
+    }
+
+    else if (imuRequest.equals("STOP")) {
+      imuTxActive = false;
+      exitIMUTxRecordMode();
+    }
+  }
+
+  else {
+    Serial.println("Central not connected, cannot transmit IMU data!");
+  }
+}
+
+bool BLEManager::imuRecordandTx() {
+  // Function to read, record and transmit line of imu data to SD card and characteristic
+  // Returns a true or false. This communicates a change in mode to the main program if
+  // we exit this mode from a command from the client rather than a button press
+  if (imuTxActive) {
+    char* dataLine = dataRecorder.readIMU();
+    imuDataChar.setValue(dataLine);
+    return true;
+  }
+
+  else {
+    return false;
+  }
+}
+
+//---------------- File Tx Methods and Callbacks ------------------//
 void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
-
+  return;
 }
 
-void BLEManager::onIMURequest(BLEDevice central, BLECharacteristic characteristic) {
-
+bool BLEManager::enterFileTxMode() {
+  return true;
 }
 
+void BLEManager::exitFileTxMode() {
+  return;
+}
 /*
 //------------------ BLE Connection Event Callbacks ---------------- //
 void onConnect(BLEDevice central) {
