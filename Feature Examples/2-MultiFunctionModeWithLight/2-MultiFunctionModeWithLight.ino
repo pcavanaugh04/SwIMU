@@ -98,7 +98,7 @@ void ledBlink(int sequenceArray[], int &sequenceInd, pin_size_t ledPin, long uns
   }
 
   // If LED is on and the timer > onTime, turn it off, track as an event, advance the counter
-  else if (ledOn && (segmentDuration <= currentDuration)) {
+  if (ledOn && (segmentDuration <= currentDuration)) {
     Serial.println("Turning LED OFF");
     digitalWrite(ledPin, HIGH);
     ledOn = false;

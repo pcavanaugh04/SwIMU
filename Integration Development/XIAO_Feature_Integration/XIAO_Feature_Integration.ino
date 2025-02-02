@@ -61,6 +61,7 @@
 #include <ArduinoBLE.h>
 #include "DataRecorder.h"
 #include "BLEManager.h"
+#include "LEDManager.h"
 
 // Setup variables
 const int buttonPin = 0;  // I/O pin where the button is connected
@@ -73,6 +74,7 @@ const int chipSelect = 5;  // Digital I/O pin needed for the SPI breakout
 // Create instance of a DataRecorder class to encapsulate data reading and file recording
 DataRecorder dataRecorder = DataRecorder();
 BLEManager bleManager = BLEManager(dataRecorder);
+LEDManager ledManager = LEDManager(RED_LED, GREEN_LED, BLUE_LED);
 // const unsigned long microsOverflowValue = 4294967295;
 
 // Button state varialbles - Functions reviewed in previous tutorials
@@ -89,14 +91,19 @@ const unsigned long consecutivePressThreshold = 250;
 
 // Sensor mode variables
 bool inDataRecordTxMode = false;
+int dataRecordTxSequence[] = {400, 100, 400, 100};
 bool inDataRecordMode = false;
+int dataRecordSequence[] = {1900, 100};
 bool inBLEConfigMode = false;
+int bleConfigSequence[] = {100, 1400, 100, 100};
 bool inFileTxMode = false;
+int fileTxSequence[] = {400, 100};
+int standbySequence[] = {1900, 100};
 
 // Indicator Light Timers
-unsigned long ledRedTimer = 0;
-unsigned long ledBlueTimer = 0;
-unsigned long ledGreenTimer = 0;
+//unsigned long ledRedTimer = 0;
+// unsigned long ledBlueTimer = 0;
+// unsigned long ledGreenTimer = 0;
 /*
 // ----------------------------- BLE Configs ---------------------------- //
 // File Config Service and Characteristics
@@ -145,6 +152,8 @@ BLEStringCharacteristic fileNameResponseChar(fileNameResponseCharUuid, BLERead, 
 //    file config info and storage of variables
 
 // We'll keep this script as the highest level integrations
+/*
+superceded by LED class by the 
 void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVariable) {
   // Function to make a specified LED blink at a specified duty cycle 
  
@@ -162,20 +171,20 @@ void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVa
     timerVariable = millis();
   }
 }
-
+*/
 void returnToStandbyMode() {
   // Function to be called when modes change, ensures clean exit of respective modes
+  ledManager.turnOff();
+
   if (inFileTxMode == true) {
     inFileTxMode = false;
     bleManager.exitFileTxMode();
-    digitalWrite(RED_LED, HIGH);
   // Code to clean disconnect from client
   }
 
   else if (inDataRecordTxMode == true) {
     inDataRecordTxMode = false;
     Serial.println("Exiting IMU Tx and Record Mode!");
-    digitalWrite(RED_LED, HIGH);
     bleManager.exitIMUTxRecordMode();
   // Code to clean disconnect from client
   // Code to save and close file
@@ -186,13 +195,12 @@ void returnToStandbyMode() {
     Serial.println("Exiting Bluetooth Config Mode!");
     inBLEConfigMode = false;
     bleManager.exitConfigMode();
-    digitalWrite(BLUE_LED, HIGH);  // Code to clean disconnect from client
+    // Code to clean disconnect from client
   }
 
   else if (inDataRecordMode == true) {
     inDataRecordMode = false;
     Serial.println("Exiting Data Recording Mode!");
-    digitalWrite(RED_LED, HIGH);
     dataRecorder.stopDataRecording();
   // Code to clean disconnect from client
   // Code to save and close file
@@ -261,7 +269,7 @@ void handleButtonEvent() {
     Serial.print("Last press held for ");
     Serial.print(buttonPressDuration);
     Serial.println("s");
-    digitalWrite(GREEN_LED, HIGH);
+    ledManager.turnOff();
 
   // 2 consecutive button presses indicate the start of a new operating mode
     if (consecutiveButtonPresses == 2) {
@@ -302,7 +310,7 @@ void handleButtonEvent() {
         else {
           Serial.println("BLE config mode failed.");
           inBLEConfigMode = false;
-          digitalWrite(BLUE_LED, HIGH);
+          ledManager.turnOff();
         }
       }
 
@@ -316,7 +324,7 @@ void handleButtonEvent() {
         else {
           Serial.println("BLE File Transfer mode failed.");
           inFileTxMode = false;
-          digitalWrite(BLUE_LED, HIGH);
+          ledManager.turnOff();
         }
       }
     }
@@ -335,17 +343,11 @@ void handleButtonEvent() {
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  // ledManager.initialize();
   // while(!Serial) // This code ensures the program only runs if the serial monitor is open. Uncomment if desired
     // Initialize Input Buttons
   pinMode(buttonPin, INPUT);
   pinMode(chipSelect, OUTPUT);
-  pinMode(RED_LED, OUTPUT);
-  pinMode(BLUE_LED, OUTPUT);
-  pinMode(GREEN_LED, OUTPUT);
-
-  digitalWrite(RED_LED, HIGH);
-  digitalWrite(BLUE_LED, HIGH);
-  digitalWrite(GREEN_LED, HIGH);
   digitalWrite(chipSelect, HIGH);
 
   delay(1000);
@@ -363,29 +365,29 @@ void loop() {
 
   // Depending on mode, do different things
   if (inBLEConfigMode) {
-    ledBlink(900, 1100, BLUE_LED, ledBlueTimer);
+    ledManager.blink(bleConfigSequence, "B");
     bleManager.poll();
   }
 
   else if (inDataRecordMode) {
-    ledBlink(100, 1900, RED_LED, ledRedTimer);
+    ledManager.blink(dataRecordSequence, "R");
     char* dataLine = dataRecorder.readIMU();
     // Serial.println(dataLine);
     }
 
   else if (inDataRecordTxMode) {
-    ledBlink(100, 400, RED_LED, ledRedTimer);
+    ledManager.blink(dataRecordTxSequence, "RB");
     if (!bleManager.imuRecordandTx()) {
       inDataRecordTxMode = false;
     }
   }
 
   else if (inFileTxMode) {
-    ledBlink(100, 400, BLUE_LED, ledRedTimer);
+    ledManager.blink(fileTxSequence, "B");
   }
 
   else {
     // Nothing Happening, in standby mode
-    ledBlink(100, 1900, GREEN_LED, ledGreenTimer);
+    ledManager.blink(standbySequence, "G");
   }
 }
