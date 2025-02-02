@@ -69,26 +69,51 @@ const unsigned long consecutivePressThreshold = 250;  // Threshold for determini
 bool inBluetoothPairingMode = false;
 bool inDataRecordMode = false;
 
-// Indicator Light Timers
-unsigned long ledRedTimer = 0;
-unsigned long ledBlueTimer = 0;
-unsigned long ledGreenTimer = 0;
+// Indicator Light Variables
+int defaultSequence[] = {1900, 100, 500, 500};
+unsigned long ledTimer = 0;
+int sequenceIndex = 0;
+bool ledOn = false;
 
-void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVariable) {
-  // Function to make a specified LED blink at a specified duty cycle 
- 
-  // If the current timerVariable has been on less than the specified on/time, keep the light on
-  if ((millis() - timerVariable) < timeOn) {
+void ledBlink(int sequenceArray[], int &sequenceInd, pin_size_t ledPin, long unsigned &timerVariable, bool &ledOn) {
+  // Function to make a specified LED blink at a specified duty cycle. sequenceArray is an array of integer values
+  // Structured as [timeOff, timeOn, timeOff, timeOn....] for the desired blink pattern.
+
+  int segmentDuration = sequenceArray[sequenceInd];
+  unsigned int currentDuration = millis() - timerVariable;
+
+  // If LED is off and the timier < offTime, turn it on, track as an event, advance the counter
+  else if (!ledOn && (segmentDuration <= currentDuration)) {
     digitalWrite(ledPin, LOW);
-  } 
+    ledOn = true;
+    timerVariable = millis();
+    Serial.println("Turning LED ON");
+    if (sequenceInd < (sizeof(sequenceArray) - 1)) {
+      sequenceInd++;
+    }
 
-  // Otherwise turn/keep it off
-  else if ((millis() - timerVariable) >= timeOn && (millis() - timerVariable) <= timeOff) {
+    else {
+      sequenceInd = 0;
+    }
+  }
+
+  // If LED is on and the timer > onTime, turn it off, track as an event, advance the counter
+  else if (ledOn && (segmentDuration <= currentDuration)) {
+    Serial.println("Turning LED OFF");
     digitalWrite(ledPin, HIGH);
+    ledOn = false;
+    timerVariable = millis();
+    if (sequenceInd < (sizeof(sequenceArray) - 1)) {
+      sequenceInd++;
+    }
+
+    else {
+      sequenceInd = 0;
+    }
   }
 
   else {
-    timerVariable = millis();
+    Serial.println("Uncaught Case! Whats going on???");
   }
 }
 
@@ -155,7 +180,15 @@ void handleButtonEvent() {
   
   // 2 consecutive button presses indicate the start of a new operating mode
     if (consecutiveButtonPresses == 2) {
+      // Turn off all LEDs
       digitalWrite(GREEN_LED, HIGH);
+      digitalWrite(RED_LED, HIGH);
+      digitalWrite(BLUE_LED, HIGH);
+
+      // Reset LED counter/tracker variables
+      ledOn = false;
+      sequenceIndex = 0;
+      ledTimer = millis();
 
   // A long hold indicates going into bluetooth transmit mode  
       if (buttonPressDuration > 3) {
@@ -171,18 +204,28 @@ void handleButtonEvent() {
     
     // Single press and hold indicates an exit event. Code will exit from whichever mode was previously active
     if (consecutiveButtonPresses == 1 && buttonPressDuration > 3) {
-        if (inDataRecordMode == true) {
-          Serial.println("Exiting Data Recording Mode!");
-          inDataRecordMode = false;
-          digitalWrite(RED_LED, HIGH);  // Turnoff Red LED
-        }
+      // Turn off all LEDs
+      digitalWrite(GREEN_LED, HIGH);
+      digitalWrite(RED_LED, HIGH);
+      digitalWrite(BLUE_LED, HIGH);
 
-        else if (inBluetoothPairingMode == true) {
-          Serial.println("Exiting Bluetooth Pairing Mode!");
-          inBluetoothPairingMode = false;
-          digitalWrite(BLUE_LED, HIGH);  // Turn off Blue LED
-        }
+      // Reset LED counter/tracker variables
+      sequenceIndex = 0;
+      ledOn = false;
+      ledTimer = millis();
+      
+      if (inDataRecordMode == true) {
+        Serial.println("Exiting Data Recording Mode!");
+        inDataRecordMode = false;
+        digitalWrite(RED_LED, HIGH);  // Turnoff Red LED
       }
+
+      else if (inBluetoothPairingMode == true) {
+        Serial.println("Exiting Bluetooth Pairing Mode!");
+        inBluetoothPairingMode = false;
+        digitalWrite(BLUE_LED, HIGH);  // Turn off Blue LED
+      }
+    }
         
     // Reset variables at end of handling sequence
     newButtonSequence = false;
@@ -215,17 +258,17 @@ void loop() {
 
   // Based on the states of our flag variables, perform appropriate functions
   if (inBluetoothPairingMode == true) {
-    ledBlink(100, 1900, BLUE_LED, ledBlueTimer);
+    ledBlink(defaultSequence, sequenceIndex, BLUE_LED, ledTimer, ledOn);
     // Other stuff to do in bluetooth pairing mode
   }
 
   else if (inDataRecordMode == true) {
-    ledBlink(100, 1900, RED_LED, ledRedTimer);
+    ledBlink(defaultSequence, sequenceIndex, RED_LED, ledTimer, ledOn);
     // Other stuff to do in data recording mode
   }
 
   else {
     // Nothing Happening, in standby mode
-    ledBlink(100, 1900, GREEN_LED, ledGreenTimer);
+    ledBlink(defaultSequence, sequenceIndex, GREEN_LED, ledTimer, ledOn);
   }
 }

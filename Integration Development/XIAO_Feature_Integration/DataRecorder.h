@@ -19,7 +19,8 @@ Contains:
 #include <Arduino.h>
 #include <LSM6DS3.h>
 #include <Wire.h>
-#include <SD.h>
+#include <SPI.h>
+#include <SdFat.h>
 // Global Variables
 const unsigned long microsOverflowValue = 4294967295;
 
@@ -42,7 +43,8 @@ class DataRecorder {
     bool recording = false;
     // SD Card file variables
     // int currentCount;
-    File imuDataFile;                   // data file object to be used for writing during record mode
+    SdFat32 sd;
+    File32 imuDataFile;                   // data file object to be used for writing during record mode
     // int chipSelect{};                     // Chip select pin to be input by the constructor
     void updateWhiteList();               // Update whitelist of files for transmitting
   

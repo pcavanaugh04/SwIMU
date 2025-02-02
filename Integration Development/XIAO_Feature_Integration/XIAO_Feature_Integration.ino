@@ -168,11 +168,14 @@ void returnToStandbyMode() {
   if (inFileTxMode == true) {
     inFileTxMode = false;
     bleManager.exitFileTxMode();
+    digitalWrite(RED_LED, HIGH);
   // Code to clean disconnect from client
   }
 
   else if (inDataRecordTxMode == true) {
     inDataRecordTxMode = false;
+    Serial.println("Exiting IMU Tx and Record Mode!");
+    digitalWrite(RED_LED, HIGH);
     bleManager.exitIMUTxRecordMode();
   // Code to clean disconnect from client
   // Code to save and close file
@@ -258,14 +261,23 @@ void handleButtonEvent() {
     Serial.print("Last press held for ");
     Serial.print(buttonPressDuration);
     Serial.println("s");
+    digitalWrite(GREEN_LED, HIGH);
+
   // 2 consecutive button presses indicate the start of a new operating mode
     if (consecutiveButtonPresses == 2) {
-      digitalWrite(GREEN_LED, HIGH);
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
       if (buttonPressDuration > 3) {
-        Serial.println("Entering Data Record and Transmit Mode");
-        inDataRecordTxMode = true;
+        if (bleManager.enterIMUTxRecordMode()) {
+          Serial.println("Entering Data Record and Transmit Mode");
+          inDataRecordTxMode = true;
+        }
+        
+        else {
+          Serial.println("IMU Tx and Record mode failed!");
+          inDataRecordTxMode = false;
+        }
+
         bleManager.enterIMUTxRecordMode();
       }
   // A short hold indicates starting accelerometer data recording

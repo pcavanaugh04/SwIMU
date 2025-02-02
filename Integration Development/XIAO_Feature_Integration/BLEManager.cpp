@@ -111,8 +111,6 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
       fileTxDataChar(fileTxDataCharUuid, BLENotify, fileTxBufferSize, false),
       fileTxCompleteChar(fileTxCompleteCharUuid, BLENotify, 30),
       fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60) {
-  // Initialize Data recorder
-  dataRecorder = dataRecorder;
 
   // Map characteristics that will be used for event handlers
   characteristicToInstanceMap[imuRequestChar.uuid()] = this;
@@ -177,7 +175,7 @@ void BLEManager::startBLE() {
 // ------------------ Getters and Setters -------------------- //
 
 String BLEManager::getFileName() {
-  return (getDateTimeStr() + "-" + personName + "-" + activityType;
+  return (getDateTimeStr() + "-" + personName + "-" + activityType);
 }
 
 void BLEManager::poll() {
@@ -205,7 +203,7 @@ String BLEManager::getDateTimeStr() {
   minutes = newTotalSeconds % 3600 / 60;
   seconds = newTotalSeconds % 3600 % 60;
   char buffer[25];
-  sprintf(buffer, "%d_%d_%d_%d_%d_%d", year, month, day, hours, minutes, seconds);
+  sprintf(buffer, "%04d_%02d_%02d_%02d_%02d_%02d", year, month, day, hours, minutes, seconds);
   dateTimeStr = String(buffer);
   return dateTimeStr;
 }
@@ -332,6 +330,7 @@ void BLEManager::onIMUTxRequest(BLEDevice central, BLECharacteristic characteris
     }
 
     else if (imuRequest.equals("STOP")) {
+      acceptIMUTxRequest = false;
       imuTxActive = false;
       exitIMUTxRecordMode();
     }
@@ -346,7 +345,11 @@ bool BLEManager::imuRecordandTx() {
   // Function to read, record and transmit line of imu data to SD card and characteristic
   // Returns a true or false. This communicates a change in mode to the main program if
   // we exit this mode from a command from the client rather than a button press
-  if (imuTxActive) {
+  if (!imuTxActive && acceptIMUTxRequest) {
+    return true;
+  }
+
+  else if (imuTxActive) {
     char* dataLine = dataRecorder.readIMU();
     imuDataChar.setValue(dataLine);
     return true;

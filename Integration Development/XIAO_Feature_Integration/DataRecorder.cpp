@@ -31,7 +31,7 @@ void DataRecorder::initDevices(int chipSelect) {
   // Initialize SD Card
   Serial.print("Initializing on pin: ");
   Serial.println(chipSelect);
-  if (!SD.begin(chipSelect)) {
+  if (!sd.begin(chipSelect, SD_SCK_MHZ(25))) {
     Serial.println("SD card initialization failed!");
     return;
   }
@@ -39,22 +39,31 @@ void DataRecorder::initDevices(int chipSelect) {
 } 
 
 void DataRecorder::displayDirectory(const char* dirName, int numTabs) {
-  File dir = SD.open(dirName);
-  while (true) {
-        File entry = dir.openNextFile();
+  File32 dir;
+  if (!dir.open(dirName, O_RDONLY)) {
+    Serial.print("Failed to open directory: ");
+    Serial.println(dirName);
+    return;
+  }
+
+  File32 entry;
+  while (entry.openNext(&dir, O_RDONLY)) {
+        entry = dir.openNextFile();
         if (!entry) break; // No more files
 
         for (int i = 0; i < numTabs; i++) {
             Serial.print("\t");
         }
-
-        Serial.print(entry.name());
-        if (entry.isDirectory()) {
+        char buf[60];
+        entry.getName(buf, sizeof(buf));
+        Serial.print(buf);
+        if (entry.isDir()) {
             Serial.println("/");
-            this->displayDirectory(entry.name(), numTabs + 1); // Recursive call for subdirectories
+
+            this->displayDirectory(buf, numTabs + 1); // Recursive call for subdirectories
         } else {
             Serial.print("\t\t");
-            Serial.println(entry.size());
+            Serial.println(entry.fileSize());
         }
         entry.close();
     }
@@ -85,8 +94,7 @@ void DataRecorder::startDataRecording(const char* fileName) {
   char filePath[50];
   snprintf(filePath, sizeof(filePath), "%s%s", rootDir, fileName);
 
-  imuDataFile = SD.open(filePath, FILE_WRITE);
-  if (!imuDataFile) {
+  if (!imuDataFile.open(filePath, O_WRITE | O_CREAT | O_TRUNC)) {
     Serial.print("Failed to open file: ");
     Serial.println(filePath);
     return;
@@ -101,10 +109,12 @@ void DataRecorder::startDataRecording(const char* fileName) {
 }
 
 void DataRecorder::stopDataRecording() {
-  if (imuDataFile) {
-    imuDataFile.close();
-    delay(1000);
-    Serial.println("Data recording stopped and file closed");
+  if (imuDataFile.isOpen()) {
+    if (imuDataFile.close()){
+      Serial.println("Data recording stopped and file closed");
+
+    };
+    delay(500);
     updateWhiteList();
   }
   else {
@@ -122,19 +132,28 @@ void DataRecorder::updateWhiteList() {
   char* fileName = "send.txt";
   snprintf(newFilePath, sizeof(newFilePath), "%s%s", rootDir, fileName);
 
-  File whiteList = SD.open(newFilePath, FILE_WRITE);
-  if (!whiteList) {
+  File32 whiteList;
+  if (!whiteList.open(newFilePath, O_WRITE | O_CREAT | O_APPEND)) {
     Serial.println("Error in opening whitelist file!");
     return;
   }
-  whiteList.println(imuDataFile.name());
+  char buf[60];
+  imuDataFile.getName(buf, sizeof(buf));
+  whiteList.println(buf);
   whiteList.close();
+  delay(500);
+  Serial.println("Whitelist file updated");
 }
 
 void DataRecorder::clearWhiteList() {
-  // Clear contents of the whitelist file. To be called after all files have been sent over BLE
   char filePath[50];
   snprintf(filePath, sizeof(filePath), "%s%s", rootDir, "send.txt");
-  File whiteList = SD.open(filePath, O_TRUNC);
-  whiteList.close();
+
+  File32 whiteList;
+  if (whiteList.open(filePath, O_WRITE | O_TRUNC)) {
+    whiteList.close();
+    Serial.println("Whitelist cleared.");
+  } else {
+    Serial.println("Failed to clear whitelist.");
+  }
 }

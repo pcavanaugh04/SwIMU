@@ -29,23 +29,192 @@ import time
 import os
 from bleak import BleakScanner, BleakClient
 
-FILE_TX_REQUEST_UUID = "550e8403-e29b-41d4-a716-446655440001"
-FILE_TX_UUID = "550e8403-e29b-41d4-a716-446655440002"
-FILE_TX_COMPLETE_UUID = "550e8403-e29b-41d4-a716-446655440003"
-FILE_NAME_UUID = "550e8403-e29b-41d4-a716-446655440004"
+FILE_TX_REQUEST_UUID = "550e8404-e29b-41d4-a716-446655440001"
+FILE_TX_UUID = "550e8405-e29b-41d4-a716-446655440002"
+FILE_TX_COMPLETE_UUID = "550e8405-e29b-41d4-a716-446655440003"
+FILE_NAME_UUID = "550e8405-e29b-41d4-a716-446655440004"
 
 DATETIME_UUID = "550e8401-e29b-41d4-a716-446655440001"
 PERSONNAME_UUID = "550e8401-e29b-41d4-a716-446655440002"
 ACTIVITY_TYPE_UUID = "550e8401-e29b-41d4-a716-446655440003"
 FILE_NAME_UUID = "550e8401-e29b-41d4-a716-446655440004"
+
+IMU_REQUEST_UUID = "550e8403-e29b-41d4-a716-446655440001"
+IMU_DATA_UUID = "550e8403-e29b-41d4-a716-446655440002"
+
 DT_FMT = "%Y_%m_%d_%H_%M_%S"
 TARGET_DEVICE = "SwIMU"
 
 nest_asyncio.apply()
 
+class BLEClient:
+    def __init__(self, address, timeout=10):
+        self.address = address
+        self.client = BleakClient(address, timeout=timeout)
+        self.connected = False
+
+    async def handle_disconnect(self, client):
+        print("Disconnected from server!")
+        self.connected = False
+        # Optionally trigger a reconnection attempt here or wait for a server event.
+        
+    async def handle_connect(self, client):
+        print("Connected to Server!")
+        
+
+    async def connect(self):
+        try:
+            print("Attempting to connect...")
+            # self.client.set_disconnected_callback(self.handle_disconnect)
+            await self.client.connect()
+        except Exception as e:
+            print(f"Failed to connect: {e}")
+            self.connected = False
+        else:
+            self.connected = True
+            print(f"Connected to server: {self.address}")
+            # await self.handle_modes()
+
+    async def disconnect(self):
+        if self.connected:
+            print("Disconnecting...")
+            await self.client.disconnect()
+            self.connected = False
+
+    async def monitor(self):
+        while True:
+            if not self.connected:
+                print("Waiting for server to reconnect...")
+                await self.connect()
+            else:
+                print("Client is connected.")
+            await asyncio.sleep(5)  # Adjust the polling frequency as needed
+            
+    async def config_device(self):
+        # poll the user with an asyncio-safe function to prevent blocking
+        input_name = await user_input("Enter the SwIMU user's name: ")
+        # Write to swimmer name characteristic
+        await self.client.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
+        # Update the datetime characterisitc to ensure an accurate refrence value
+        datetime_str = datetime.now().strftime(DT_FMT)
+        await self.client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
+        # Repeat with the activity 
+        input_activity = await user_input("Enter the SwIMU activty name: ")
+        await self.client.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
+        datetime_str = datetime.now().strftime(DT_FMT)
+        await self.client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
+        
+        # Get the new filename from the server after sending our config information
+        new_file_name = await self.client.read_gatt_char(FILE_NAME_UUID)
+        print(f"Configured file name: {new_file_name.decode('utf-8')}")
+        
+    async def rx_IMU_readings_mode(self):
+        ### ------------------ BLE Notify Implementation ----------------- ### 
+        # The BLE Notify method involves setting up a callback function to
+        # run whenver new data is written to a characteristic on the perephrial
+        # because there is no call/reponse, there is shorter delay between
+        # instances of the program running
+         
+        # Start a loop to run for 10s to read  the IMU_DATA characteristic
+        data_list = []
+        
+        # define a callback function to process data when it arrives
+        async def handle_IMU_notification(sender, data):            
+            nonlocal data_list
+            # Decode bytes array into human readable string
+            imu_sensor_values = data.decode("utf-8") 
+            print(f"Recieved Data: {imu_sensor_values}")
+            # process the data based on format "time, Ax, Ay, Az, Gx, Gy, Gz"
+            split_line = imu_sensor_values.split(",")
+            imu_data_line = (float(x) for x in split_line)
+            data_list.append(imu_data_line)
+            
+        # Configure the notification
+        await self.client.start_notify(IMU_DATA_UUID, handle_IMU_notification)
+        await user_input("Press Enter to Start Data Recording")
+        # Write the start request
+        await self.client.write_gatt_char(IMU_REQUEST_UUID, b"START")
+        start_time = time.perf_counter()
+        # Collect data for specified time
+        await user_input("Press Enter to Stop Data Recording")
+        # Write the end request to stop transmitting
+        await self.client.write_gatt_char(IMU_REQUEST_UUID, b"END")
+        record_time = time.perf_counter() - start_time
+
+        print("----------------- BLE Notify Implementation ---------------")    
+        print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
+        print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
+        
+    async def handle_modes(self):
+        if self.connected:
+            # Check for user input and perform accordingly
+            print("\nSelect Mode:")
+            print("\t1. Config Mode")
+            print("\t2. IMU Live Tx Mode")
+            print("\t3. File Tx Mode")
+            print("\t4. Disconnect")
+            choice = input("Enter choice (1-4): ")
+            
+            if choice == '1':
+                await self.config_device()
+            elif choice == '2':
+                await self.rx_IMU_readings_mode()
+            elif choice == '3':
+                await self.file_tx_mode()
+            elif choice == '4':
+                print("Disconnecting...")
+                await self.disconnect()
+                return
+            else:
+                print("Invalid choice. Try again.")
+        else: 
+            # Try to connect
+            await self.connect()
+                
+    async def file_tx_mode(self):
+        pass
+        
+
 async def user_input(input_msg: str) -> str:
     input_value = input(input_msg)
     return input_value
+
+async def tx_IMU_with_notify(client):
+    ### ------------------ BLE Notify Implementation ----------------- ### 
+    # The BLE Notify method involves setting up a callback function to
+    # run whenver new data is written to a characteristic on the perephrial
+    # because there is no call/reponse, there is shorter delay between
+    # instances of the program running
+     
+    # Start a loop to run for 10s to read  the IMU_DATA characteristic
+    data_list = []
+    
+    # define a callback function to process data when it arrives
+    async def handle_IMU_notification(sender, data):            
+        nonlocal data_list
+        # Decode bytes array into human readable string
+        imu_sensor_values = data.decode("utf-8") 
+        print(f"Recieved Data: {imu_sensor_values}")
+        # process the data based on format "time, Ax, Ay, Az, Gx, Gy, Gz"
+        split_line = imu_sensor_values.split(",")
+        imu_data_line = (float(x) for x in split_line)
+        data_list.append(imu_data_line)
+        
+    # Configure the notification
+    await client.start_notify(IMU_DATA_UUID, handle_IMU_notification)
+    await user_input("Press Enter to Start Data Recording")
+    # Write the start request
+    await client.write_gatt_char(IMU_REQUEST_UUID, b"START")
+    start_time = time.perf_counter()
+    # Collect data for specified time
+    await user_input("Press Enter to Stop Data Recording")
+    # Write the end request to stop transmitting
+    await client.write_gatt_char(IMU_REQUEST_UUID, b"END")
+    record_time = time.perf_counter() - start_time
+
+    print("----------------- BLE Notify Implementation ---------------")    
+    print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
+    print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
     
 
 # Define the "main" function for Asyncio. 
@@ -65,27 +234,25 @@ async def main():
     if not address:
         print("Target Device Not Found!")
         return
-    print("Connecting Device. Enter Connection mode")
-    # Use the found address to connect to the device
-    async with BleakClient(address, timeout=20) as client:
-        print("Device Connected!")
+    
+    # initialize Client device with discovered address
+    client = BLEClient(address, timeout=20)
+    try:
+        client.monitor_task = asyncio.create_task(client.monitor())
+        while(True):
+            await client.handle_modes()
+            await asyncio.sleep(5)
+        # await client.connect()
+        # Start monitoring
+    except KeyboardInterrupt:
+        print("Interrupted by user.")
+    finally:
+        if client.monitor_task:
+            client.monitor_task.cancel()
+            
+        await client.disconnect()
         
-        # poll the user with an asyncio-safe function to prevent blocking
-        input_name = await user_input("Enter the SwIMU user's name: ")
-        # Write to swimmer name characteristic
-        await client.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
-        # Update the datetime characterisitc to ensure an accurate refrence value
-        datetime_str = datetime.now().strftime(DT_FMT)
-        await client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        # Repeat with the activity 
-        input_activity = await user_input("Enter the SwIMU activty name: ")
-        await client.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
-        datetime_str = datetime.now().strftime(DT_FMT)
-        await client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        
-        # Get the new filename from the server after sending our config information
-        new_file_name = await client.read_gatt_char(FILE_NAME_UUID)
-        print(f"Configured file name: {new_file_name.decode('utf-8')}")
+        print("Cleaned up and exiting.")
         
 r"""
 ---------------------Reused code from file tx script -----------------------
