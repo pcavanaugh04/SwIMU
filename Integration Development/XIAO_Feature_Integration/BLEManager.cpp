@@ -166,7 +166,7 @@ void BLEManager::startBLE() {
   // Set event handlers
   // BLE.setEventHandler(BLEConnected, staticOnConnect);
   // BLE.setEventHandler(BLEDisconnected, staticOnDisconnect);
-  BLE.advertise();
+  // BLE.advertise();
   Serial.println("BLE device ready to connect");
 
 }
@@ -208,19 +208,47 @@ String BLEManager::getDateTimeStr() {
   return dateTimeStr;
 }
 
-// ---------------- Config Mode Methods and Callbacks --------------- //
-bool BLEManager::enterConfigMode() {
-  // Set Flag that we're accepting new config values
-  central = getCentral();
-  if (central.connected()) {
-    acceptNewConfig = true;
-    return true;
+void BLEManager::enterPairingMode(int timeout) {
+  timeoutStart = millis();
+  timeoutDuration = timeout;
+  inPairingMode = true;
+  Serial.println("Starting Pairing Mode!");
+  reachedTimeout = false;
+}
+
+void BLEManager::pairCentral() {
+  // advertise to central, check for connections within timeout. Timeout measured in seconds
+
+  if ((millis() - timeoutStart) < (timeoutDuration * 1000)) {
+    // Timeout has not been reached. Attempt to connect to central
+    central = getCentral();
+    if (central.connected()) {
+      connected = true;
+      inPairingMode = false;
+      Serial.println("Central Connected!");
+    }
+
+    else {
+      Serial.println("No Central Detected");
+    }
+  }
+  
+  else {
+    // Reached timeout
+    reachedTimeout = true;
+    BLE.stopAdvertise();
+    Serial.println("Timeout reached, connection failed");
+    inPairingMode = false;
   }
 
-  else {
-    Serial.println("Central not connected. Cannot configure!");
-    return false;
-  }
+}
+
+// ---------------- Config Mode Methods and Callbacks --------------- //
+void BLEManager::enterConfigMode(int timeout) {
+  // Set Flag that we're accepting new config values
+  BLE.setAdvertisedService(configInfoService);
+  BLE.advertise();
+  enterPairingMode(timeout);
 }
 
 void BLEManager::exitConfigMode() {
@@ -234,54 +262,39 @@ void BLEManager::exitConfigMode() {
 
 void BLEManager::onDateTimeCharWritten(BLEDevice central, BLECharacteristic characteristic){
   // Handle event for central writing to the dateTime characteristic
-  if (acceptNewConfig) {
-    int length = characteristic.valueLength();
-    byte data[length];
-    characteristic.readValue(data, length);
-    dateTimeStr = bytesToString(data, length);
-    dateTimeRefrenceMillis = millis();
-    Serial.println("New DateTime Characteristic Recieved: " + dateTimeStr);
-    fileName = dateTimeStr + "-" + personName + "-" + activityType;
-    Serial.println("New File Name: " + fileName);
-    fileNameConfigChar.writeValue(fileName);
-  }
-  else {
-    Serial.println("Not accepting new config messages!");
-  }
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  dateTimeStr = bytesToString(data, length);
+  dateTimeRefrenceMillis = millis();
+  Serial.println("New DateTime Characteristic Recieved: " + dateTimeStr);
+  fileName = dateTimeStr + "-" + personName + "-" + activityType;
+  Serial.println("New File Name: " + fileName);
+  fileNameConfigChar.writeValue(fileName);
 }
 void BLEManager::onPersonNameCharWritten(BLEDevice central, BLECharacteristic characteristic){
   // Handle event for central writing to the dateTime characteristic
-  if (acceptNewConfig) {
-    int length = characteristic.valueLength();
-    byte data[length];
-    characteristic.readValue(data, length);
-    personName = bytesToString(data, length); 
-    Serial.println("New personName Characteristic Recieved: " + personName);
-    fileName = dateTimeStr + "-" + personName + "-" + activityType;
-    Serial.println("New File Name: " + fileName);
-    fileNameConfigChar.writeValue(fileName);
-  }
-  else {
-    Serial.println("Not accepting new config messages!");
-  }
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  personName = bytesToString(data, length); 
+  Serial.println("New personName Characteristic Recieved: " + personName);
+  fileName = dateTimeStr + "-" + personName + "-" + activityType;
+  Serial.println("New File Name: " + fileName);
+  fileNameConfigChar.writeValue(fileName);
+
 }
 
 void BLEManager::onActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
-
-  if (acceptNewConfig) {
-    // Handle event for central writing to the dateTime characteristic
-    int length = characteristic.valueLength();
-    byte data[length];
-    characteristic.readValue(data, length);
-    activityType = bytesToString(data, length);
-    Serial.println("New activityType Characteristic Recieved: " + activityType);
-    fileName = dateTimeStr + "-" + personName + "-" + activityType;
-    Serial.println("New File Name: " + fileName);
-    fileNameConfigChar.writeValue(fileName);
-  }
-  else {
-    Serial.println("Not accepting new config messages!");
-  }
+  // Handle event for central writing to the dateTime characteristic
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  activityType = bytesToString(data, length);
+  Serial.println("New activityType Characteristic Recieved: " + activityType);
+  fileName = dateTimeStr + "-" + personName + "-" + activityType;
+  Serial.println("New File Name: " + fileName);
+  fileNameConfigChar.writeValue(fileName);
 }
 
 BLEDevice BLEManager::getCentral() {
@@ -290,20 +303,17 @@ BLEDevice BLEManager::getCentral() {
 
 
 // ------------- IMU Tx and Record Mode Methods and Callbacks ----------- //
-bool BLEManager::enterIMUTxRecordMode() {
+bool BLEManager::enterIMUTxRecordMode(int timeout) {
   // Check to see if there's a valid file name
   // Initiate a connection with client
-  central = getCentral();
-  if (central.connected()) {
-    acceptIMUTxRequest = true;
-    return true;
-  }
+  // Set Flag that we're accepting new config values
+  BLE.setAdvertisedService(IMUServiceUuid);
+  BLE.advertise();
+  enterPairingMode(timeout);
 
-  else {
-    Serial.println("Central not connected. Cannot Tx IMU Readings!");
-    return false;
-  }
+  // Do we need to initiate the data recording here? Where do we do that?
 }
+
 void BLEManager::exitIMUTxRecordMode() {
   acceptIMUTxRequest = false;
   imuTxActive = false;
@@ -315,7 +325,6 @@ void BLEManager::exitIMUTxRecordMode() {
 }
 
 void BLEManager::onIMUTxRequest(BLEDevice central, BLECharacteristic characteristic) {
-  if (acceptIMUTxRequest) {
     int length = characteristic.valueLength();
     byte data[length];
     characteristic.readValue(data, length);
@@ -329,34 +338,32 @@ void BLEManager::onIMUTxRequest(BLEDevice central, BLECharacteristic characteris
       dataRecorder.startDataRecording(dataFileName.c_str());
     }
 
-    else if (imuRequest.equals("STOP")) {
+    else if (imuRequest.equals("END")) {
       acceptIMUTxRequest = false;
       imuTxActive = false;
       exitIMUTxRecordMode();
     }
-  }
-
-  else {
-    Serial.println("Central not connected, cannot transmit IMU data!");
-  }
 }
 
 bool BLEManager::imuRecordandTx() {
   // Function to read, record and transmit line of imu data to SD card and characteristic
   // Returns a true or false. This communicates a change in mode to the main program if
   // we exit this mode from a command from the client rather than a button press
-  if (!imuTxActive && acceptIMUTxRequest) {
-    return true;
-  }
+  if (!imuTxActive) {
+    central = getCentral();
+    if (central.connected()) {
+      return true;
+    }
 
-  else if (imuTxActive) {
-    char* dataLine = dataRecorder.readIMU();
-    imuDataChar.setValue(dataLine);
-    return true;
+    else {
+      return false;
+    }
   }
 
   else {
-    return false;
+    char* dataLine = dataRecorder.readIMU();
+    imuDataChar.setValue(dataLine);
+    return true;
   }
 }
 
@@ -365,7 +372,9 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
   return;
 }
 
-bool BLEManager::enterFileTxMode() {
+bool BLEManager::enterFileTxMode(int timeout) {
+  BLE.setAdvertisedService(fileTxService);
+  BLE.advertise();
   return true;
 }
 

@@ -84,12 +84,16 @@ class BLEManager {
     // Other functions
     void findFilestoTx();
     void txFileData();
+    void enterPairingMode(int timeout);
     // Variables
     DataRecorder& dataRecorder;
     BLEDevice central;
     BLEDevice getCentral();
     const int fileTxBufferSize = 244; // Oddly enough this seems to be the bandwidth of the string Char
     unsigned long dateTimeRefrenceMillis; // refrence value for incrementing local timestamp
+    // unsigned long timeoutCounter;
+    unsigned long timeoutStart;
+    int timeoutDuration;
     const char* deviceName = "SwIMU";
     bool acceptNewConfig;
     bool acceptIMUTxRequest;
@@ -102,13 +106,15 @@ class BLEManager {
   // Public variables and functions
   public:
     BLEManager(DataRecorder& dataRecorder); // Constructor
-    bool enterConfigMode();
+    void enterConfigMode(int timeout);
     void exitConfigMode();
-    bool enterIMUTxRecordMode();
+    bool enterIMUTxRecordMode(int timeout);
     void exitIMUTxRecordMode();
     bool imuRecordandTx();
-    bool enterFileTxMode();
+    bool enterFileTxMode(int timeout);
     void exitFileTxMode();
+    // void enterPairingMode(BLEService service, int timeout);
+    void pairCentral();
     // BLE Callbacks;
     void onIMUTxRequest(BLEDevice central, BLECharacteristic characteristic);
     void onDateTimeCharWritten(BLEDevice central, BLECharacteristic characteristic);
@@ -119,7 +125,10 @@ class BLEManager {
     void onDisconnect(BLEDevice central);
     // bool IMUTxMode(int timeout);
     // bool FileTxMode(int timeout);  
-    bool connected = false;                // Read Values from the onboard IMU
+    bool connected = false;  
+    bool inPairingMode = false;    
+    bool reachedTimeout;
+    // Read Values from the onboard IMU
     // void updateDateTimeStr();
     void startBLE();
     String getDateTimeStr();

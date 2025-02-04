@@ -378,7 +378,10 @@ void loop() {
       }
     }
     else {
-      bleManager.poll();
+      if (!bleManager.imuRecordandTx()) {
+        inDataRecordTxMode = false;
+        ledManager.turnOff();
+      }
     }
   }
 

@@ -29,16 +29,19 @@ import time
 import os
 from bleak import BleakScanner, BleakClient
 
-FILE_TX_REQUEST_UUID = "550e8404-e29b-41d4-a716-446655440001"
+FILE_TX_SERVICE_UUID = "550e8404-e29b-41d4-a716-446655440000"
+FILE_TX_REQUEST_UUID = "550e8405-e29b-41d4-a716-446655440001"
 FILE_TX_UUID = "550e8405-e29b-41d4-a716-446655440002"
 FILE_TX_COMPLETE_UUID = "550e8405-e29b-41d4-a716-446655440003"
 FILE_NAME_UUID = "550e8405-e29b-41d4-a716-446655440004"
 
+CONFIG_SERVICE_UUID = "550e8400-e29b-41d4-a716-446655440000"
 DATETIME_UUID = "550e8401-e29b-41d4-a716-446655440001"
 PERSONNAME_UUID = "550e8401-e29b-41d4-a716-446655440002"
 ACTIVITY_TYPE_UUID = "550e8401-e29b-41d4-a716-446655440003"
 FILE_NAME_UUID = "550e8401-e29b-41d4-a716-446655440004"
 
+IMU_TX_SERVICE_UUID = "550e8402-e29b-41d4-a716-446655440000"
 IMU_REQUEST_UUID = "550e8403-e29b-41d4-a716-446655440001"
 IMU_DATA_UUID = "550e8403-e29b-41d4-a716-446655440002"
 
@@ -47,11 +50,11 @@ TARGET_DEVICE = "SwIMU"
 
 nest_asyncio.apply()
 
-class BLEClient:
+class BLEClient(BleakClient):
     def __init__(self, address, timeout=10):
-        self.address = address
-        self.client = BleakClient(address, timeout=timeout)
+        # self.client = BleakClient(address, timeout=timeout)
         self.connected = False
+        super().__init__(address, timeout=timeout)
 
     async def handle_disconnect(self, client):
         print("Disconnected from server!")
@@ -62,24 +65,24 @@ class BLEClient:
         print("Connected to Server!")
         
 
-    async def connect(self):
-        try:
-            print("Attempting to connect...")
-            # self.client.set_disconnected_callback(self.handle_disconnect)
-            await self.client.connect()
-        except Exception as e:
-            print(f"Failed to connect: {e}")
-            self.connected = False
-        else:
-            self.connected = True
-            print(f"Connected to server: {self.address}")
-            # await self.handle_modes()
+    # async def connect(self):
+    #     try:
+    #         print("Attempting to connect...")
+    #         # self.client.set_disconnected_callback(self.handle_disconnect)
+    #         await self.client.connect()
+    #     except Exception as e:
+    #         print(f"Failed to connect: {e}")
+    #         self.connected = False
+    #     else:
+    #         self.connected = True
+    #         print(f"Connected to server: {self.address}")
+    #         # await self.handle_modes()
 
-    async def disconnect(self):
-        if self.connected:
-            print("Disconnecting...")
-            await self.client.disconnect()
-            self.connected = False
+    # async def disconnect(self):
+    #     if self.connected:
+    #         print("Disconnecting...")
+    #         await self.client.disconnect()
+    #         self.connected = False
 
     async def monitor(self):
         while True:
@@ -94,18 +97,18 @@ class BLEClient:
         # poll the user with an asyncio-safe function to prevent blocking
         input_name = await user_input("Enter the SwIMU user's name: ")
         # Write to swimmer name characteristic
-        await self.client.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
+        await self.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
         # Update the datetime characterisitc to ensure an accurate refrence value
         datetime_str = datetime.now().strftime(DT_FMT)
-        await self.client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
+        await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
         # Repeat with the activity 
         input_activity = await user_input("Enter the SwIMU activty name: ")
-        await self.client.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
+        await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
         datetime_str = datetime.now().strftime(DT_FMT)
-        await self.client.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
+        await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
         
         # Get the new filename from the server after sending our config information
-        new_file_name = await self.client.read_gatt_char(FILE_NAME_UUID)
+        new_file_name = await self.read_gatt_char(FILE_NAME_UUID)
         print(f"Configured file name: {new_file_name.decode('utf-8')}")
         
     async def rx_IMU_readings_mode(self):
@@ -130,15 +133,15 @@ class BLEClient:
             data_list.append(imu_data_line)
             
         # Configure the notification
-        await self.client.start_notify(IMU_DATA_UUID, handle_IMU_notification)
+        await self.start_notify(IMU_DATA_UUID, handle_IMU_notification)
         await user_input("Press Enter to Start Data Recording")
         # Write the start request
-        await self.client.write_gatt_char(IMU_REQUEST_UUID, b"START")
+        await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
         start_time = time.perf_counter()
         # Collect data for specified time
         await user_input("Press Enter to Stop Data Recording")
         # Write the end request to stop transmitting
-        await self.client.write_gatt_char(IMU_REQUEST_UUID, b"END")
+        await self.write_gatt_char(IMU_REQUEST_UUID, b"END")
         record_time = time.perf_counter() - start_time
 
         print("----------------- BLE Notify Implementation ---------------")    
@@ -170,10 +173,26 @@ class BLEClient:
         else: 
             # Try to connect
             await self.connect()
+
                 
     async def file_tx_mode(self):
         pass
+
+
+async def handle_input():
+    print("\nSelect an Command:")
+    print("\t1. Connect")
+    print("\t2. Disconnect")
+    choice = input("Enter choice (1-2): ")
+    
+    match choice:
+        case '1':
+            return "connect"
         
+        case '2':
+            return "disconnect"    
+
+    
 
 async def user_input(input_msg: str) -> str:
     input_value = input(input_msg)
@@ -216,43 +235,75 @@ async def tx_IMU_with_notify(client):
     print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
     print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
     
-
-# Define the "main" function for Asyncio. 
-async def main():
+async def scan(target_device_name: str):
     # Scan for ble devices in our proximity
-    devices = await BleakScanner.discover(timeout=5)
+    devices = await BleakScanner.discover(timeout=5, return_adv=True)
+    # print(devices)
     address = ""
     # When scanning is complete, see if our target device name was found
-    for device in devices:
-        print(device)
+    for device_addr, device_info in devices.items():
+        device = device_info[0]
+        print(f"{device_addr, device.name}")
         # If so, extract the BLE address associated with the device. these
         # adresses are unique to each device and is how we connect/
         # communicate with them
-        if TARGET_DEVICE in device.__str__():
-            address = device.__str__().split(": ")[0]
+        if (device.name is not None) and (target_device_name in device.name):
+            device_metadata = device_info[1]
+            print(f"Target Device Metadata: {device_metadata}")
+            return device_info
 
     if not address:
         print("Target Device Not Found!")
-        return
+        return None
+
+# Define the "main" function for Asyncio. 
+async def main():
+    # Scan for ble devices in our proximity    
     
-    # initialize Client device with discovered address
-    client = BLEClient(address, timeout=20)
-    try:
-        client.monitor_task = asyncio.create_task(client.monitor())
-        while(True):
-            await client.handle_modes()
-            await asyncio.sleep(5)
-        # await client.connect()
-        # Start monitoring
-    except KeyboardInterrupt:
-        print("Interrupted by user.")
-    finally:
-        if client.monitor_task:
-            client.monitor_task.cancel()
+    # client = BLEClient(address, timeout=20)
+
+    while True:
+        user_input = await handle_input()
+        if "connect" in user_input:
+            # Device is a tuple containing (BLEDevice, AdvData) from the scanner
+            device = await scan(TARGET_DEVICE)
+            if device is None:
+                print("Failed to discover device! Resetting...")
+                continue
             
-        await client.disconnect()
+            adv_service = device[1].service_uuids[0]
+            address = device[0].address
+            
+            print(f"Connecting to address: {address}")
+
+            async with BLEClient(address, timeout=20) as client:
+                print("Device Connected!")
+                if CONFIG_SERVICE_UUID in adv_service:
+                    await client.config_device()
+                elif IMU_TX_SERVICE_UUID in adv_service:
+                    await client.rx_IMU_readings_mode()
+                        
+                # Read contents of the advertising packet
         
-        print("Cleaned up and exiting.")
+        
+    
+    # # initialize Client device with discovered address
+    # try:
+    #     client.monitor_task = asyncio.create_task(client.monitor())
+    #     while(True):
+    #         await client.handle_modes()
+    #         await asyncio.sleep(5)
+    #     # await client.connect()
+    #     # Start monitoring
+    # except KeyboardInterrupt:
+    #     print("Interrupted by user.")
+    # finally:
+    #     if client.monitor_task:
+    #         client.monitor_task.cancel()
+            
+    #     await client.disconnect()
+        
+    #     print("Cleaned up and exiting.")
         
 r"""
 ---------------------Reused code from file tx script -----------------------
