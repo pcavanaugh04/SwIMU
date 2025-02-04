@@ -5,13 +5,14 @@ LEDManager::LEDManager(pin_size_t RED_LED, pin_size_t GREEN_LED, pin_size_t BLUE
 
 }
 
-void LEDManager::blink(int sequenceArray[], char LEDColors[]) {
+void LEDManager::blink(int sequenceArray[], int sequenceSize, char LEDColors[]) {
   // blink the onboard LED in a predefined sequence structured as [timeOff, timeOn, timeOff, timeOn....]
   // Use a char {"R", "G", "B" to determine which LED to address}, multiple colors can be specified if a char array is used, and they will
   // Align to the sequence array as off/on sequence to first letter, 2nd sequence to second, etc
 
   LED* blinkLED = nullptr;
   int sequenceCount = sequenceIndex / 2;
+  int sequenceLength = sequenceSize / sizeof(sequenceArray[0]);
   char colorIndex;
   
   // char FixedLEDColors[] = "G";
@@ -55,9 +56,8 @@ void LEDManager::blink(int sequenceArray[], char LEDColors[]) {
     if ((!blinkLED->isOn) && (segmentDuration <= currentDuration)) {
       blinkLED->turnOn();
       LEDTimer = millis();
-      // Serial.println("Turning LED ON");
 
-      if (sequenceIndex < (sizeof(sequenceArray) / sizeof(sequenceArray[0]))) {
+      if (sequenceIndex < (sequenceLength - 1)) {
         sequenceIndex++;
       }
 
@@ -68,11 +68,11 @@ void LEDManager::blink(int sequenceArray[], char LEDColors[]) {
 
     // If LED is on and the timer > onTime, turn it off, track as an event, advance the counter
     else if ((blinkLED->isOn) && (segmentDuration <= currentDuration)) {
-      // Serial.println("Turning LED OFF");
+
       blinkLED->turnOff();
       LEDTimer = millis();
     
-      if (sequenceIndex < (sizeof(sequenceArray) / sizeof(sequenceArray[0]))) {
+      if (sequenceIndex < (sequenceLength - 1)) {
         sequenceIndex++;
       }
 

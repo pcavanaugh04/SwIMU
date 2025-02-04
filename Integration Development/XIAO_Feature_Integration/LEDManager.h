@@ -45,7 +45,7 @@ class LEDManager {
   public:
     LEDManager(pin_size_t RED_LED, pin_size_t GREEN_LED, pin_size_t BLUE_LED);
     // void init
-    void blink(int sequenceArray[],  char LEDColors[]);
+    void blink(int sequenceArray[], int sequenceSize, char LEDColors[]);
     void turnOff();
 
 };

@@ -99,6 +99,7 @@ int bleConfigSequence[] = {100, 1400, 100, 100};
 bool inFileTxMode = false;
 int fileTxSequence[] = {400, 100};
 int standbySequence[] = {1900, 100};
+int connectionTimeout = 20; // Timeout [s] for BLE connection search
 
 // Indicator Light Timers
 //unsigned long ledRedTimer = 0;
@@ -276,17 +277,10 @@ void handleButtonEvent() {
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
       if (buttonPressDuration > 3) {
-        if (bleManager.enterIMUTxRecordMode()) {
-          Serial.println("Entering Data Record and Transmit Mode");
-          inDataRecordTxMode = true;
-        }
-        
-        else {
-          Serial.println("IMU Tx and Record mode failed!");
-          inDataRecordTxMode = false;
-        }
+        bleManager.enterIMUTxRecordMode(connectionTimeout);
+        Serial.println("Entering Live IMU BLE Tx Mode!");
+        inDataRecordTxMode = true;
 
-        bleManager.enterIMUTxRecordMode();
       }
   // A short hold indicates starting accelerometer data recording
       else {
@@ -302,30 +296,19 @@ void handleButtonEvent() {
       if (buttonPressDuration < 3) {
         // Serial.println("Entering Bluetooth Pairing Mode!");
         inBLEConfigMode = true;
-        if (bleManager.enterConfigMode()) {
-          //Perform connection procedure
-          Serial.println("Entering Bluetooth Config Mode.");
-        }
+        bleManager.enterConfigMode(connectionTimeout);
+        Serial.println("Entering BLE Config Mode.");
 
-        else {
-          Serial.println("BLE config mode failed.");
-          inBLEConfigMode = false;
-          ledManager.turnOff();
-        }
+        //bleManager.enterPairingMode(10);
+          // Perform connection procedure
+          // Serial.println("Entering Bluetooth Config Mode.
       }
 
       else {
         inFileTxMode = true;
-        if (bleManager.enterFileTxMode()) {
-          //Perform connection procedure
-          Serial.println("Entering BLE File Transfer Mode.");
-        }
-
-        else {
-          Serial.println("BLE File Transfer mode failed.");
-          inFileTxMode = false;
-          ledManager.turnOff();
-        }
+        bleManager.enterFileTxMode(connectionTimeout);
+        //Perform connection procedure
+        Serial.println("Entering BLE File Transfer Mode.");
       }
     }
 
@@ -365,29 +348,56 @@ void loop() {
 
   // Depending on mode, do different things
   if (inBLEConfigMode) {
-    ledManager.blink(bleConfigSequence, "B");
-    bleManager.poll();
+    ledManager.blink(bleConfigSequence, sizeof(bleConfigSequence), "B");
+    if (bleManager.inPairingMode) {
+      bleManager.pairCentral();
+      if (bleManager.reachedTimeout) {
+        inBLEConfigMode = false;
+        ledManager.turnOff();
+      }
+    }
+
+    else {
+      bleManager.poll();
+    }
   }
 
   else if (inDataRecordMode) {
-    ledManager.blink(dataRecordSequence, "R");
+    ledManager.blink(dataRecordSequence, sizeof(dataRecordSequence), "R");
     char* dataLine = dataRecorder.readIMU();
     // Serial.println(dataLine);
     }
 
   else if (inDataRecordTxMode) {
-    ledManager.blink(dataRecordTxSequence, "RB");
-    if (!bleManager.imuRecordandTx()) {
-      inDataRecordTxMode = false;
+    ledManager.blink(dataRecordTxSequence, sizeof(dataRecordTxSequence), "RB");
+    if (bleManager.inPairingMode) {
+      bleManager.pairCentral();
+      if (bleManager.reachedTimeout) {
+        inDataRecordTxMode = false;
+        ledManager.turnOff();
+      }
+    }
+    else {
+      bleManager.poll();
     }
   }
 
   else if (inFileTxMode) {
-    ledManager.blink(fileTxSequence, "B");
+    ledManager.blink(fileTxSequence, sizeof(fileTxSequence), "B");
+    if (bleManager.inPairingMode) {
+      bleManager.pairCentral();
+      if (bleManager.reachedTimeout) {
+        inFileTxMode = false;
+        ledManager.turnOff();
+      }
+    }  
+    else {
+      bleManager.poll();
+    }
   }
 
   else {
     // Nothing Happening, in standby mode
-    ledManager.blink(standbySequence, "G");
+    ledManager.blink(standbySequence, sizeof(standbySequence), "G");
   }
 }
