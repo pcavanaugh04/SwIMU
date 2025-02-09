@@ -148,36 +148,89 @@ class BLEClient(BleakClient):
         print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
         print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
         
-    async def handle_modes(self):
-        if self.connected:
-            # Check for user input and perform accordingly
-            print("\nSelect Mode:")
-            print("\t1. Config Mode")
-            print("\t2. IMU Live Tx Mode")
-            print("\t3. File Tx Mode")
-            print("\t4. Disconnect")
-            choice = input("Enter choice (1-4): ")
-            
-            if choice == '1':
-                await self.config_device()
-            elif choice == '2':
-                await self.rx_IMU_readings_mode()
-            elif choice == '3':
-                await self.file_tx_mode()
-            elif choice == '4':
-                print("Disconnecting...")
-                await self.disconnect()
+    
+    async def write_to_file(self, save_path, file_data):
+        with open(save_path, "wb") as f:
+            f.write(file_data)
+        
+    
+                
+    async def file_rx_mode(self):
+        # Send Request for File transfer
+        await user_input("Press Enter to Start File Transfer")
+
+        await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"SEND_FILES")
+        status = await self.read_gatt_char(FILE_TX_REQUEST_UUID)
+        status = status.decode("utf-8")
+        if (status == "READY"):
+            print("Periphrial Ready to Transmit Files")
+            first_file_flag = True
+
+        else:
+            print("Unhandled error case. Potentially no files available. Canceling transfer")
+
+            return
+
+        while True:
+            # Wait for server to send file name
+            file_name = await self.read_gatt_char(FILE_NAME_UUID)
+            file_name = file_name.decode("utf-8")
+            if (file_name == "ERROR"):
+                print("Error on Server accessing file!")
                 return
             else:
-                print("Invalid choice. Try again.")
-        else: 
-            # Try to connect
-            await self.connect()
-
+                print(f"Recieved file name: {file_name}")
+            
+            # setup variable to recieve file data
+            file_data = b""      
+            
+            # define and assign notification callbacks on first file only
+            if first_file_flag:
+                # Callback to accumulate packets of file data from server
+                async def handle_file_data(sender, data):
+                    nonlocal file_data
+                    file_data += data
+                    
+                # Callback to handle completion notificaiton
+                def handle_transfer_complete(sender, data):
+                    if data.decode("utf-8") == "TRANSFER_COMPLETE":
+                        transfer_complete.set_result(True)
+                        print("Transfer Complete")
                 
-    async def file_tx_mode(self):
-        pass
-
+                # Setup the notificaiton handler
+                await self.start_notify(FILE_TX_UUID, handle_file_data)
+                
+                # config file complete notificaiton manager
+                await self.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)
+        
+            # Initialize a Future event to hold until file transfer is complete
+            transfer_complete = asyncio.Future()
+            
+            # Acknowledge file name to indicate we're ready to recieve file data 
+            await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"START")
+            print("Client Acknowledged File name. Beginning Transfer")
+            file_tx_start = time.perf_counter()
+        
+            # Wait for transfer compltete notification
+            await transfer_complete
+            print(f"File tx in {time.perf_counter() - file_tx_start} s")
+        
+            
+            # Write recieved contents to file
+            save_path = os.path.join(r"C:\Users\patri\Downloads", file_name.split('/')[-1])
+            await self.write_to_file(save_path, file_data)
+            
+            await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"MORE_FILES?")
+            status = await self.read_gatt_char(FILE_TX_REQUEST_UUID)
+            status = status.decode("utf-8")
+            if (status == "MORE_FILES"):
+                print("Ready to recieve another file.")
+                first_file_flag = False
+                
+            elif (status == "DONE"):
+                print("All files transmitted!")
+                break
+            
 
 async def handle_input():
     print("\nSelect an Command:")
@@ -197,43 +250,6 @@ async def handle_input():
 async def user_input(input_msg: str) -> str:
     input_value = input(input_msg)
     return input_value
-
-async def tx_IMU_with_notify(client):
-    ### ------------------ BLE Notify Implementation ----------------- ### 
-    # The BLE Notify method involves setting up a callback function to
-    # run whenver new data is written to a characteristic on the perephrial
-    # because there is no call/reponse, there is shorter delay between
-    # instances of the program running
-     
-    # Start a loop to run for 10s to read  the IMU_DATA characteristic
-    data_list = []
-    
-    # define a callback function to process data when it arrives
-    async def handle_IMU_notification(sender, data):            
-        nonlocal data_list
-        # Decode bytes array into human readable string
-        imu_sensor_values = data.decode("utf-8") 
-        print(f"Recieved Data: {imu_sensor_values}")
-        # process the data based on format "time, Ax, Ay, Az, Gx, Gy, Gz"
-        split_line = imu_sensor_values.split(",")
-        imu_data_line = (float(x) for x in split_line)
-        data_list.append(imu_data_line)
-        
-    # Configure the notification
-    await client.start_notify(IMU_DATA_UUID, handle_IMU_notification)
-    await user_input("Press Enter to Start Data Recording")
-    # Write the start request
-    await client.write_gatt_char(IMU_REQUEST_UUID, b"START")
-    start_time = time.perf_counter()
-    # Collect data for specified time
-    await user_input("Press Enter to Stop Data Recording")
-    # Write the end request to stop transmitting
-    await client.write_gatt_char(IMU_REQUEST_UUID, b"END")
-    record_time = time.perf_counter() - start_time
-
-    print("----------------- BLE Notify Implementation ---------------")    
-    print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
-    print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
     
 async def scan(target_device_name: str):
     # Scan for ble devices in our proximity
@@ -282,6 +298,9 @@ async def main():
                     await client.config_device()
                 elif IMU_TX_SERVICE_UUID in adv_service:
                     await client.rx_IMU_readings_mode()
+                
+                elif FILE_TX_SERVICE_UUID in adv_service:
+                    await client.file_rx_mode()
                         
                 # Read contents of the advertising packet
         

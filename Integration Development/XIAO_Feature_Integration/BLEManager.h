@@ -20,6 +20,7 @@ Contains:
 #include <ArduinoBLE.h>
 #include <string.h>
 #include <map>
+#include <vector>
 #include "DataRecorder.h"
 
 // ----------------------------- BLE Configs ---------------------------- //
@@ -83,7 +84,6 @@ class BLEManager {
         
     // Other functions
     void findFilestoTx();
-    void txFileData();
     void enterPairingMode(int timeout);
     // Variables
     DataRecorder& dataRecorder;
@@ -98,6 +98,13 @@ class BLEManager {
     bool acceptNewConfig;
     bool acceptIMUTxRequest;
     bool imuTxActive;
+    bool fileTxActive;
+    bool fileDataTxActive;
+    bool fileEndFlag;
+
+    std::vector<String> whiteListFileNames;
+    File32 txFile; 
+
     String dateTimeStr;
     String personName;
     String activityType;
@@ -113,6 +120,7 @@ class BLEManager {
     bool imuRecordandTx();
     bool enterFileTxMode(int timeout);
     void exitFileTxMode();
+    bool txFileData();
     // void enterPairingMode(BLEService service, int timeout);
     void pairCentral();
     // BLE Callbacks;

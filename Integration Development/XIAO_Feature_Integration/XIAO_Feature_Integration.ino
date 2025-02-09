@@ -101,78 +101,7 @@ int fileTxSequence[] = {400, 100};
 int standbySequence[] = {1900, 100};
 int connectionTimeout = 20; // Timeout [s] for BLE connection search
 
-// Indicator Light Timers
-//unsigned long ledRedTimer = 0;
-// unsigned long ledBlueTimer = 0;
-// unsigned long ledGreenTimer = 0;
-/*
-// ----------------------------- BLE Configs ---------------------------- //
-// File Config Service and Characteristics
-const char* configInfoServiceUuid = "550e8400-e29b-41d4-a716-446655440000";
-const char* dateTimeConfigCharUuid = "550e8401-e29b-41d4-a716-446655440001";
-const char* personNameConfigCharUuid = "550e8401-e29b-41d4-a716-446655440002";
-const char* activityTypeConfigCharUuid = "550e8401-e29b-41d4-a716-446655440003";
-const char* fileNameConfigCharUuid = "550e8401-e29b-41d4-a716-446655440004";
-BLEStringCharacteristic dateTimeConfigChar(dateTimeConfigCharUuid, BLEWrite, 25);
-BLEStringCharacteristic personNameConfigChar(personNameConfigCharUuid, BLEWrite, 25);
-BLEStringCharacteristic activityTypeConfigChar(activityTypeConfigCharUuid, BLEWrite, 25);
-BLEStringCharacteristic fileNameConfigChar(fileNameConfigCharUuid, BLERead, 80);
 
-// IMU Data Stream Service and Characteristics
-const char* IMUServiceUuid = "550e8402-e29b-41d4-a716-446655440000";
-const char* IMURequestCharacteristicUuid = "550e8403-e29b-41d4-a716-446655440001";
-const char* IMUDataCharacteristicUuid = "550e8403-e29b-41d4-a716-446655440002";
-BLEService imuService(IMUServiceUuid);
-BLEStringCharacteristic imuRequestCharacteristic(IMURequestCharacteristicUuid, BLEWrite, 10);
-BLEStringCharacteristic imuDataCharacteristic(IMUDataCharacteristicUuid, BLERead | BLENotify, 100);
-
-// File Transfer Service and Characteristics
-const char* fileTransferServiceUuid = "550e8404-e29b-41d4-a716-446655440000";
-const char* fileTransferRequestCharUuid = "550e8405-e29b-41d4-a716-446655440001";
-const char* fileTransferDataCharUuid = "550e8405-e29b-41d4-a716-446655440002";
-const char* fileTransferCompleteCharUuid = "550e8405-e29b-41d4-a716-446655440003";
-const char* fileNameResponseCharUuid = "550e8405-e29b-41d4-a716-446655440004";
-const int fileTxBufferSize = 244; // Oddly enough this seems to be the bandwidth of the string Char
-// Init Objects
-BLEService fileTransferService(fileTransferServiceUuid);
-BLEStringCharacteristic fileTransferRequestChar(fileTransferRequestCharUuid, BLEWrite, 10);
-BLECharacteristic fileTransferDataChar(fileTransferDataCharUuid, BLENotify, fileTxBufferSize, false);
-BLEStringCharacteristic fileTransferCompleteChar(fileTransferCompleteCharUuid, BLENotify, 30);
-BLEStringCharacteristic fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60);
-*/
-
-//// going to need a good way to organize all this so it doesnt get spaghetti
-// Thinking of splitting things into modules, but dont see a huge need for custom classes. Yet
-// DataRecording.h
-//    IMU setup and recording stuff, also extends into calibration when we get there
-//    SD card functions and such
-
-// BLEModules.h
-//    Callbacks
-//    handling data (bytes2str)
-//    file config info and storage of variables
-
-// We'll keep this script as the highest level integrations
-/*
-superceded by LED class by the 
-void ledBlink(int timeOn, int timeOff, pin_size_t ledPin, long unsigned &timerVariable) {
-  // Function to make a specified LED blink at a specified duty cycle 
- 
-  // If the current timerVariable has been on less than the specified on/time, keep the light on
-  if ((millis() - timerVariable) < timeOn) {
-    digitalWrite(ledPin, LOW);
-  } 
-
-  // Otherwise turn/keep it off
-  else if ((millis() - timerVariable) >= timeOn && (millis() - timerVariable) <= timeOff) {
-    digitalWrite(ledPin, HIGH);
-  }
-
-  else {
-    timerVariable = millis();
-  }
-}
-*/
 void returnToStandbyMode() {
   // Function to be called when modes change, ensures clean exit of respective modes
   ledManager.turnOff();
@@ -202,7 +131,8 @@ void returnToStandbyMode() {
   else if (inDataRecordMode == true) {
     inDataRecordMode = false;
     Serial.println("Exiting Data Recording Mode!");
-    dataRecorder.stopDataRecording();
+    String dataFileName = bleManager.getFileName();
+    dataRecorder.stopDataRecording(dataFileName.c_str());
   // Code to clean disconnect from client
   // Code to save and close file
   // Update whitelist file with new filenames
@@ -387,6 +317,8 @@ void loop() {
 
   else if (inFileTxMode) {
     ledManager.blink(fileTxSequence, sizeof(fileTxSequence), "B");
+    bleManager.poll();
+
     if (bleManager.inPairingMode) {
       bleManager.pairCentral();
       if (bleManager.reachedTimeout) {
@@ -394,8 +326,9 @@ void loop() {
         ledManager.turnOff();
       }
     }  
-    else {
-      bleManager.poll();
+    else if (!bleManager.txFileData()) {
+      inDataRecordTxMode = false;
+      ledManager.turnOff();
     }
   }
 

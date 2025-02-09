@@ -107,7 +107,7 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
 
       // Initialize BLE File Transfer Service and Characteristics
       fileTxService(fileTxServiceUuid),
-      fileTxRequestChar(fileTxRequestCharUuid, BLEWrite, 10),
+      fileTxRequestChar(fileTxRequestCharUuid, BLEWrite | BLERead, 10),
       fileTxDataChar(fileTxDataCharUuid, BLENotify, fileTxBufferSize, false),
       fileTxCompleteChar(fileTxCompleteCharUuid, BLENotify, 30),
       fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60) {
@@ -175,7 +175,7 @@ void BLEManager::startBLE() {
 // ------------------ Getters and Setters -------------------- //
 
 String BLEManager::getFileName() {
-  return (getDateTimeStr() + "-" + personName + "-" + activityType);
+  return (getDateTimeStr() + "-" + personName + "-" + activityType + ".csv");
 }
 
 void BLEManager::poll() {
@@ -192,7 +192,10 @@ String BLEManager::getDateTimeStr() {
 
   // Check if parsing succeeded (6 items should be matched)
   if (parsed != 6) {
-    Serial.println("Error: Invalid datetime format.");
+    Serial.print("Error: Invalid datetime format. Number of fields recognized: ");
+    Serial.println(parsed);
+    Serial.print("Contents of dateTimeStr variable: ");
+    Serial.println(dateTimeStr);
     return "ERROR!";
   }
 
@@ -268,7 +271,7 @@ void BLEManager::onDateTimeCharWritten(BLEDevice central, BLECharacteristic char
   dateTimeStr = bytesToString(data, length);
   dateTimeRefrenceMillis = millis();
   Serial.println("New DateTime Characteristic Recieved: " + dateTimeStr);
-  fileName = dateTimeStr + "-" + personName + "-" + activityType;
+  fileName = getFileName();
   Serial.println("New File Name: " + fileName);
   fileNameConfigChar.writeValue(fileName);
 }
@@ -317,7 +320,8 @@ bool BLEManager::enterIMUTxRecordMode(int timeout) {
 void BLEManager::exitIMUTxRecordMode() {
   acceptIMUTxRequest = false;
   imuTxActive = false;
-  dataRecorder.stopDataRecording();
+  String dataFileName = getFileName();
+  dataRecorder.stopDataRecording(dataFileName.c_str());
   central = getCentral();
   if (central.connected()){
     central.disconnect();
@@ -368,8 +372,78 @@ bool BLEManager::imuRecordandTx() {
 }
 
 //---------------- File Tx Methods and Callbacks ------------------//
+
+/* Skeleton functions:
+Connection Procedure
+  advertise service to client
+  connect to client
+  client requests for files to be transferred
+file transfer
+  prephrial searches SD card for whitelist file
+  Create list of file names to transfer
+  loop - FileTxActive = True
+    first iteration: open file, tx file name
+      wait for central to confirm readiness to recieve file 
+    if fileDataTxActive
+      transfer file contents
+      check if end of file
+        set fileDatatxActive to false
+        set endFileData to True
+    if endFileData
+      delete file
+      remove from whitelist file
+      Notify end of file
+  
+
+
+*/
 void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
-  return;
+  // Handle event for central writing to the dateTime characteristic
+  int length = characteristic.valueLength();
+  byte data[length];
+  characteristic.readValue(data, length);
+  String fileTxRequest = bytesToString(data, length);
+  
+  Serial.println("Request Recieved: " + fileTxRequest);
+  
+  if (fileTxRequest.equals("SEND_FILES")) {
+    // Open and load contents of the whitelist file
+    File32 whiteListFile;
+    whiteListFile.open(dataRecorder.whiteListFilePath, O_READ);
+    // Create a list of file names from the whitelist file (lines separated by "\n"?)
+    // Save list to varaible
+    while (whiteListFile.available()) {
+      String line = whiteListFile.readStringUntil('\n');
+      line.trim();
+      Serial.println(line);
+      if (line.length() > 0) {
+          whiteListFileNames.push_back(line);
+      }
+    }
+
+    if (whiteListFileNames.empty()) {
+      Serial.println("No files available to transfer!");
+      fileTxRequestChar.writeValue("ERROR!");
+      return;
+    }
+    
+    Serial.println("List of File Names in WhiteList:");
+    for (String l : whiteListFileNames) {
+        Serial.println(l);
+    }
+
+    Serial.println();
+    Serial.println("Ready to send files!");
+    fileTxActive = true;
+    fileTxRequestChar.writeValue("READY");
+  }  
+  
+  // If "Start" is written to the characteristic, then the client is ready to recieve data.
+  // Set txFileFlag to true so a new packet is sent every loop. 
+  else if (fileTxRequest.equals("START")) {
+    // Set flag to true
+    fileTxActive = true;
+  }
 }
 
 bool BLEManager::enterFileTxMode(int timeout) {
@@ -380,6 +454,53 @@ bool BLEManager::enterFileTxMode(int timeout) {
 
 void BLEManager::exitFileTxMode() {
   return;
+}
+
+bool BLEManager::txFileData() {
+  if (fileTxActive) {
+    /* Copy paste from feature demonstration. Awaiting implementation in integrated environment
+
+    // Open the specified file
+    String filePath = "accelDir/" + dataFileName;
+    
+    Serial.print("Attempting to open file: ");
+    Serial.println(filePath);
+          // Check to see if file exists
+    if (!SD.exists(filePath)){
+      Serial.println("ERROR: FIle not recognized!");
+    }
+    File dataFile = SD.open(filePath.c_str(), FILE_READ);
+    Serial.println(dataFile.name());
+    // Create a time counter for funsies
+    int txStartTime = millis();
+    Serial.println("File opened. Transmitting...");
+    // Parse through the datafile, chunking data into payloads and transmitting
+    // each payload sequentially
+    while (dataFile.available()) {
+      char buffer[fileTxBufferSize]; // Create a buffer to fill with data
+      int bytesRead = dataFile.read(buffer, fileTxBufferSize);
+      // Serial.print(buffer);
+      // Write the full buffer to the characteristic
+      fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
+      delay(30); // Small delay to prevent BLE stack overflow
+    }
+
+
+    int txElapsedTime = millis() - txStartTime;
+    // Send a notification when the end is reached
+    fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
+    Serial.print("File transmission completed in:");
+    Serial.print(txElapsedTime);
+
+    // Close the file
+    dataFile.close();
+  */
+  }
+
+  else {
+    return true;
+  }
+  // if the flag is 
 }
 /*
 //------------------ BLE Connection Event Callbacks ---------------- //

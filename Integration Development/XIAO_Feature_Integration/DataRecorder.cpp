@@ -16,6 +16,8 @@ DataRecorder::DataRecorder() {
   // chipSelect = chipSelect;
   // Initialize IMU Sensor
   imuSensor = LSM6DS3(I2C_MODE, 0x6A);
+  snprintf(whiteListFilePath, sizeof(whiteListFilePath), "%s%s", rootDir, whiteListFileName);
+
 }
 
 void DataRecorder::initDevices(int chipSelect) {
@@ -54,7 +56,7 @@ void DataRecorder::displayDirectory(const char* dirName, int numTabs) {
         for (int i = 0; i < numTabs; i++) {
             Serial.print("\t");
         }
-        char buf[60];
+        char buf[fileNameLength];
         entry.getName(buf, sizeof(buf));
         Serial.print(buf);
         if (entry.isDir()) {
@@ -91,7 +93,7 @@ char* DataRecorder::readIMU() {
 }
 
 void DataRecorder::startDataRecording(const char* fileName) {
-  char filePath[50];
+  char filePath[fileNameLength];
   snprintf(filePath, sizeof(filePath), "%s%s", rootDir, fileName);
 
   if (!imuDataFile.open(filePath, O_WRITE | O_CREAT | O_TRUNC)) {
@@ -108,14 +110,14 @@ void DataRecorder::startDataRecording(const char* fileName) {
   recording = true;
 }
 
-void DataRecorder::stopDataRecording() {
+void DataRecorder::stopDataRecording(const char* fileName) {
   if (imuDataFile.isOpen()) {
     if (imuDataFile.close()){
       Serial.println("Data recording stopped and file closed");
 
     };
     delay(500);
-    updateWhiteList();
+    updateWhiteList(fileName);
   }
   else {
     Serial.println("No available file to close!");
@@ -126,31 +128,27 @@ void DataRecorder::stopDataRecording() {
   recording = false;
 }
 
-void DataRecorder::updateWhiteList() {
+void DataRecorder::updateWhiteList(const char* fileName) {
   // This function updates the whitelist file that records files that haven't yet been transmitted
-  char newFilePath[50];
-  char* fileName = "send.txt";
-  snprintf(newFilePath, sizeof(newFilePath), "%s%s", rootDir, fileName);
 
   File32 whiteList;
-  if (!whiteList.open(newFilePath, O_WRITE | O_CREAT | O_APPEND)) {
+  if (!whiteList.open(whiteListFilePath, O_WRITE | O_CREAT | O_APPEND)) {
     Serial.println("Error in opening whitelist file!");
     return;
   }
-  char buf[60];
-  imuDataFile.getName(buf, sizeof(buf));
-  whiteList.println(buf);
+
+  Serial.print("Writing to WhiteList file: ");
+  Serial.println(fileName);
+  whiteList.println(fileName);
   whiteList.close();
   delay(500);
   Serial.println("Whitelist file updated");
 }
 
 void DataRecorder::clearWhiteList() {
-  char filePath[50];
-  snprintf(filePath, sizeof(filePath), "%s%s", rootDir, "send.txt");
-
+  // Clear contents of whiteList file
   File32 whiteList;
-  if (whiteList.open(filePath, O_WRITE | O_TRUNC)) {
+  if (whiteList.open(whiteListFilePath, O_WRITE | O_TRUNC)) {
     whiteList.close();
     Serial.println("Whitelist cleared.");
   } else {
