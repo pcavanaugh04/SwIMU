@@ -95,8 +95,13 @@ char* DataRecorder::readIMU() {
 void DataRecorder::startDataRecording(const char* fileName) {
   char filePath[fileNameLength];
   snprintf(filePath, sizeof(filePath), "%s%s", rootDir, fileName);
-
-  if (!imuDataFile.open(filePath, O_WRITE | O_CREAT | O_TRUNC)) {
+  // Display working directory of the sd card
+  // Serial.print("Current working directory of SdFat module: ");
+  // SdFat sd;
+  // Serial.println(sd.vwd()->getName());
+  // sd.chdir();
+  // imuDataFile = File32();
+  if (!imuDataFile.open(filePath, O_CREAT | O_WRITE)) {
     Serial.print("Failed to open file: ");
     Serial.println(filePath);
     return;
@@ -112,12 +117,29 @@ void DataRecorder::startDataRecording(const char* fileName) {
 
 void DataRecorder::stopDataRecording(const char* fileName) {
   if (imuDataFile.isOpen()) {
+    // imuDataFile.sync();
+    // Show name of file to be closed
+    Serial.print("Name of file being closed: ");
+    Serial.println(imuDataFile.printName());
+
     if (imuDataFile.close()){
       Serial.println("Data recording stopped and file closed");
+    }
 
-    };
+    displayDirectory("accelDir");
     delay(500);
+    // Check to see if path exists
+    char filePath[fileNameLength];
+    snprintf(filePath, sizeof(filePath), "%s%s", rootDir, fileName);
+    if (sd.exists(filePath)) {
+      Serial.println("File successfuly found on SDCard");
+    }
+
+    else {
+      Serial.println("Uh oh! File not found on device!");
+    }
     updateWhiteList(fileName);
+
   }
   else {
     Serial.println("No available file to close!");

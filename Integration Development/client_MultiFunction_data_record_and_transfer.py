@@ -33,7 +33,7 @@ FILE_TX_SERVICE_UUID = "550e8404-e29b-41d4-a716-446655440000"
 FILE_TX_REQUEST_UUID = "550e8405-e29b-41d4-a716-446655440001"
 FILE_TX_UUID = "550e8405-e29b-41d4-a716-446655440002"
 FILE_TX_COMPLETE_UUID = "550e8405-e29b-41d4-a716-446655440003"
-FILE_NAME_UUID = "550e8405-e29b-41d4-a716-446655440004"
+FILE_TX_NAME_UUID = "550e8405-e29b-41d4-a716-446655440004"
 
 CONFIG_SERVICE_UUID = "550e8400-e29b-41d4-a716-446655440000"
 DATETIME_UUID = "550e8401-e29b-41d4-a716-446655440001"
@@ -54,6 +54,7 @@ class BLEClient(BleakClient):
     def __init__(self, address, timeout=10):
         # self.client = BleakClient(address, timeout=timeout)
         self.connected = False
+        self.file_rx_setup_flag = False
         super().__init__(address, timeout=timeout)
 
     async def handle_disconnect(self, client):
@@ -152,6 +153,8 @@ class BLEClient(BleakClient):
     async def write_to_file(self, save_path, file_data):
         with open(save_path, "wb") as f:
             f.write(file_data)
+
+        print(f"Recieved Data Written to file: {save_path}")
         
     
                 
@@ -170,10 +173,36 @@ class BLEClient(BleakClient):
             print("Unhandled error case. Potentially no files available. Canceling transfer")
 
             return
+        
+        # setup variable to recieve file data
+        file_data = b""      
+        
+        # define and assign notification callbacks on first file only
+        if not self.file_rx_setup_flag:
+            # Callback to accumulate packets of file data from server
+            async def handle_file_data(sender, data):
+                nonlocal file_data
+                file_data += data
+                
+            # Callback to handle completion notificaiton
+            def handle_transfer_complete(sender, data):
+                if data.decode("utf-8") == "TRANSFER_COMPLETE":
+                    transfer_complete.set_result(True)
+                    print("Transfer Complete")
+            
+            # Setup the notificaiton handler
+            await self.start_notify(FILE_TX_UUID, handle_file_data)
+            
+            # config file complete notificaiton manager
+            await self.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)
+            self.file_rx_setup_flag = True
 
         while True:
             # Wait for server to send file name
-            file_name = await self.read_gatt_char(FILE_NAME_UUID)
+            file_name = await self.read_gatt_char(FILE_TX_NAME_UUID)
+            # Write an acknowledgement
+            await self.write_gatt_char(FILE_TX_NAME_UUID, b"ACK")
+
             file_name = file_name.decode("utf-8")
             if (file_name == "ERROR"):
                 print("Error on Server accessing file!")
@@ -183,26 +212,7 @@ class BLEClient(BleakClient):
             
             # setup variable to recieve file data
             file_data = b""      
-            
-            # define and assign notification callbacks on first file only
-            if first_file_flag:
-                # Callback to accumulate packets of file data from server
-                async def handle_file_data(sender, data):
-                    nonlocal file_data
-                    file_data += data
-                    
-                # Callback to handle completion notificaiton
-                def handle_transfer_complete(sender, data):
-                    if data.decode("utf-8") == "TRANSFER_COMPLETE":
-                        transfer_complete.set_result(True)
-                        print("Transfer Complete")
-                
-                # Setup the notificaiton handler
-                await self.start_notify(FILE_TX_UUID, handle_file_data)
-                
-                # config file complete notificaiton manager
-                await self.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)
-        
+
             # Initialize a Future event to hold until file transfer is complete
             transfer_complete = asyncio.Future()
             
@@ -217,35 +227,26 @@ class BLEClient(BleakClient):
         
             
             # Write recieved contents to file
-            save_path = os.path.join(r"C:\Users\patri\Downloads", file_name.split('/')[-1])
+            save_path = os.path.join(r"C:\Users\patri\Downloads", file_name)
             await self.write_to_file(save_path, file_data)
             
+            # Query periphrial for more files.
+            
+
             await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"MORE_FILES?")
             status = await self.read_gatt_char(FILE_TX_REQUEST_UUID)
             status = status.decode("utf-8")
             if (status == "MORE_FILES"):
                 print("Ready to recieve another file.")
-                first_file_flag = False
+                file_data = b""
                 
             elif (status == "DONE"):
                 print("All files transmitted!")
                 break
             
 
-async def handle_input():
-    print("\nSelect an Command:")
-    print("\t1. Connect")
-    print("\t2. Disconnect")
-    choice = input("Enter choice (1-2): ")
-    
-    match choice:
-        case '1':
-            return "connect"
-        
-        case '2':
-            return "disconnect"    
-
-    
+async def prompt_connection():
+    input("Press Enter to Initiate Connection:")
 
 async def user_input(input_msg: str) -> str:
     input_value = input(input_msg)
@@ -279,28 +280,27 @@ async def main():
     # client = BLEClient(address, timeout=20)
 
     while True:
-        user_input = await handle_input()
-        if "connect" in user_input:
-            # Device is a tuple containing (BLEDevice, AdvData) from the scanner
-            device = await scan(TARGET_DEVICE)
-            if device is None:
-                print("Failed to discover device! Resetting...")
-                continue
-            
-            adv_service = device[1].service_uuids[0]
-            address = device[0].address
-            
-            print(f"Connecting to address: {address}")
+        await prompt_connection()
+        # Device is a tuple containing (BLEDevice, AdvData) from the scanner
+        device = await scan(TARGET_DEVICE)
+        if device is None:
+            print("Failed to discover device! Resetting...")
+            continue
+        
+        adv_service = device[1].service_uuids[0]
+        address = device[0].address
+        
+        print(f"Connecting to address: {address}")
 
-            async with BLEClient(address, timeout=20) as client:
-                print("Device Connected!")
-                if CONFIG_SERVICE_UUID in adv_service:
-                    await client.config_device()
-                elif IMU_TX_SERVICE_UUID in adv_service:
-                    await client.rx_IMU_readings_mode()
-                
-                elif FILE_TX_SERVICE_UUID in adv_service:
-                    await client.file_rx_mode()
+        async with BLEClient(address, timeout=20) as client:
+            print("Device Connected!")
+            if CONFIG_SERVICE_UUID in adv_service:
+                await client.config_device()
+            elif IMU_TX_SERVICE_UUID in adv_service:
+                await client.rx_IMU_readings_mode()
+            
+            elif FILE_TX_SERVICE_UUID in adv_service:
+                await client.file_rx_mode()
                         
                 # Read contents of the advertising packet
         

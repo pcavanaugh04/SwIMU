@@ -131,8 +131,7 @@ void returnToStandbyMode() {
   else if (inDataRecordMode == true) {
     inDataRecordMode = false;
     Serial.println("Exiting Data Recording Mode!");
-    String dataFileName = bleManager.getFileName();
-    dataRecorder.stopDataRecording(dataFileName.c_str());
+    dataRecorder.stopDataRecording(bleManager.dataFileName.c_str());
   // Code to clean disconnect from client
   // Code to save and close file
   // Update whitelist file with new filenames
@@ -217,7 +216,7 @@ void handleButtonEvent() {
         Serial.println("Entering Data Record Mode!");
         inDataRecordMode = true;
         // Have some check to see if a valid file name has been recieved
-        String dataFileName = bleManager.getFileName();
+        String dataFileName = bleManager.updateFileName();
         dataRecorder.startDataRecording(dataFileName.c_str());
         }
       }
@@ -327,7 +326,7 @@ void loop() {
       }
     }  
     else if (!bleManager.txFileData()) {
-      inDataRecordTxMode = false;
+      inFileTxMode = false;
       ledManager.turnOff();
     }
   }

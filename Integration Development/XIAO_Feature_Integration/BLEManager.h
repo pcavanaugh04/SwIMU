@@ -61,7 +61,7 @@ class BLEManager {
     const char* fileTxRequestCharUuid = "550e8405-e29b-41d4-a716-446655440001";
     const char* fileTxDataCharUuid = "550e8405-e29b-41d4-a716-446655440002";
     const char* fileTxCompleteCharUuid = "550e8405-e29b-41d4-a716-446655440003";
-    const char* fileNameResponseCharUuid = "550e8405-e29b-41d4-a716-446655440004";
+    const char* fileNameTxCharUuid = "550e8405-e29b-41d4-a716-446655440004";
     // Init Characteristics and Services:
         // BLE Configuration Service and Characteristics
     BLEService configInfoService;
@@ -80,7 +80,7 @@ class BLEManager {
     BLEStringCharacteristic fileTxRequestChar;
     BLECharacteristic fileTxDataChar;
     BLEStringCharacteristic fileTxCompleteChar;
-    BLEStringCharacteristic fileNameResponseChar;
+    BLEStringCharacteristic fileNameTxChar;
         
     // Other functions
     void findFilestoTx();
@@ -99,8 +99,11 @@ class BLEManager {
     bool acceptIMUTxRequest;
     bool imuTxActive;
     bool fileTxActive;
-    bool fileDataTxActive;
+    bool fileDataTxActive = false;
     bool fileEndFlag;
+
+    int txFileListIndex = 0;
+    int txStartTime;
 
     std::vector<String> whiteListFileNames;
     File32 txFile; 
@@ -140,7 +143,8 @@ class BLEManager {
     // void updateDateTimeStr();
     void startBLE();
     String getDateTimeStr();
-    String getFileName();
+    String dataFileName;
+    String updateFileName();
     void poll();
 
 };

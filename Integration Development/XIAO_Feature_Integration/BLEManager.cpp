@@ -9,7 +9,7 @@ Contains:
     BLEManager
   
   Functions
-
+config name
 */
 //==========================================================//
 
@@ -107,10 +107,10 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
 
       // Initialize BLE File Transfer Service and Characteristics
       fileTxService(fileTxServiceUuid),
-      fileTxRequestChar(fileTxRequestCharUuid, BLEWrite | BLERead, 10),
+      fileTxRequestChar(fileTxRequestCharUuid, BLEWrite | BLERead, 20),
       fileTxDataChar(fileTxDataCharUuid, BLENotify, fileTxBufferSize, false),
       fileTxCompleteChar(fileTxCompleteCharUuid, BLENotify, 30),
-      fileNameResponseChar(fileNameResponseCharUuid, BLERead, 60) {
+      fileNameTxChar(fileNameTxCharUuid, BLERead, 60) {
 
   // Map characteristics that will be used for event handlers
   characteristicToInstanceMap[imuRequestChar.uuid()] = this;
@@ -140,7 +140,7 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
   fileTxService.addCharacteristic(fileTxRequestChar);
   fileTxService.addCharacteristic(fileTxDataChar);
   fileTxService.addCharacteristic(fileTxCompleteChar);
-  fileTxService.addCharacteristic(fileNameResponseChar);
+  fileTxService.addCharacteristic(fileNameTxChar);
   fileTxRequestChar.setEventHandler(BLEWritten, staticOnFileTxRequest);
 
   // Connection Handlers
@@ -174,8 +174,9 @@ void BLEManager::startBLE() {
 
 // ------------------ Getters and Setters -------------------- //
 
-String BLEManager::getFileName() {
-  return (getDateTimeStr() + "-" + personName + "-" + activityType + ".csv");
+String BLEManager::updateFileName() {
+  dataFileName = (getDateTimeStr() + "-" + personName + "-" + activityType + ".csv");
+  return dataFileName;
 }
 
 void BLEManager::poll() {
@@ -196,7 +197,7 @@ String BLEManager::getDateTimeStr() {
     Serial.println(parsed);
     Serial.print("Contents of dateTimeStr variable: ");
     Serial.println(dateTimeStr);
-    return "ERROR!";
+    return "ERROR";
   }
 
   // Calculate new values for hours, minutes and seconds based on the number of new seconds
@@ -232,7 +233,7 @@ void BLEManager::pairCentral() {
     }
 
     else {
-      Serial.println("No Central Detected");
+      // Serial.println("No Central Detected");
     }
   }
   
@@ -271,7 +272,7 @@ void BLEManager::onDateTimeCharWritten(BLEDevice central, BLECharacteristic char
   dateTimeStr = bytesToString(data, length);
   dateTimeRefrenceMillis = millis();
   Serial.println("New DateTime Characteristic Recieved: " + dateTimeStr);
-  fileName = getFileName();
+  fileName = updateFileName();
   Serial.println("New File Name: " + fileName);
   fileNameConfigChar.writeValue(fileName);
 }
@@ -320,7 +321,6 @@ bool BLEManager::enterIMUTxRecordMode(int timeout) {
 void BLEManager::exitIMUTxRecordMode() {
   acceptIMUTxRequest = false;
   imuTxActive = false;
-  String dataFileName = getFileName();
   dataRecorder.stopDataRecording(dataFileName.c_str());
   central = getCentral();
   if (central.connected()){
@@ -338,7 +338,7 @@ void BLEManager::onIMUTxRequest(BLEDevice central, BLECharacteristic characteris
     // If we've recieved a start command, switch the flag to true
     if (imuRequest.equals("START")) {
       imuTxActive = true;
-      String dataFileName = getFileName();
+      String dataFileName = updateFileName();
       dataRecorder.startDataRecording(dataFileName.c_str());
     }
 
@@ -415,7 +415,7 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
     while (whiteListFile.available()) {
       String line = whiteListFile.readStringUntil('\n');
       line.trim();
-      Serial.println(line);
+      // Serial.println(line);
       if (line.length() > 0) {
           whiteListFileNames.push_back(line);
       }
@@ -434,18 +434,47 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
 
     Serial.println();
     Serial.println("Ready to send files!");
-    fileTxActive = true;
+
     fileTxRequestChar.writeValue("READY");
+    fileTxActive = true;
   }  
   
   // If "Start" is written to the characteristic, then the client is ready to recieve data.
   // Set txFileFlag to true so a new packet is sent every loop. 
   else if (fileTxRequest.equals("START")) {
     // Set flag to true
-    fileTxActive = true;
+    fileDataTxActive = true;
+  }
+
+  else if (fileTxRequest.equals("MORE_FILES?")) {
+    // If the index value is less than the length of file lists to transmit
+    // If the list has been exhausted, exit transmit mode. Confirm file deletion
+    if (txFileListIndex < (whiteListFileNames.size() - 1)) {
+      Serial.print("Notifying Central of more files!");
+      Serial.print("Number of files: ");
+      Serial.println(whiteListFileNames.size());
+      Serial.print("Value of txFileListIndex: ");
+      Serial.println(txFileListIndex);
+
+      Serial.print("Number of files left: ");
+      Serial.println(whiteListFileNames.size() - txFileListIndex);
+      fileTxRequestChar.writeValue("MORE_FILES");
+      fileTxActive = true;
+
+      }
+
+    else {
+      // Code to run completion of the WhiteList transfer
+      // Clear contents of the whitelist file. Save this for later, implement when
+      // comfortable deleting data off the device as well.
+      // dataRecorder.clearWhiteList();
+      Serial.println("No more files!");
+      fileTxRequestChar.writeValue("DONE");
+      fileTxActive = false;
+      txFileListIndex = 0;
+    }
   }
 }
-
 bool BLEManager::enterFileTxMode(int timeout) {
   BLE.setAdvertisedService(fileTxService);
   BLE.advertise();
@@ -458,43 +487,73 @@ void BLEManager::exitFileTxMode() {
 
 bool BLEManager::txFileData() {
   if (fileTxActive) {
-    /* Copy paste from feature demonstration. Awaiting implementation in integrated environment
+    /*
+    Copy paste from feature demonstration. Awaiting implementation in integrated environment
 
-    // Open the specified file
-    String filePath = "accelDir/" + dataFileName;
-    
-    Serial.print("Attempting to open file: ");
-    Serial.println(filePath);
-          // Check to see if file exists
-    if (!SD.exists(filePath)){
-      Serial.println("ERROR: FIle not recognized!");
+    first iteration: open file, tx file name
+      wait for central to confirm readiness to recieve file 
+    if fileDataTxActive
+      transfer file contents
+      check if end of file
+        set fileDatatxActive to false
+        set endFileData to True
+    if endFileData
+      delete file
+      remove from whitelist file
+      Notify end of file
+
+    */
+    // If on first iteration of fileTxActive loop, fileTxDataFlag will be false.
+    // open the specified file
+    if (!fileDataTxActive) {
+      String txFileName = whiteListFileNames[txFileListIndex];
+      String txFilePath = "accelDir/" + txFileName;
+      Serial.print("Attempting to open file: ");
+      Serial.println(txFilePath);
+            // Check to see if file exists
+      if (!dataRecorder.sd.exists(txFilePath)) {
+        Serial.println("ERROR: File not recognized!");
+        fileTxActive = false;
+        return false;
+      }
+
+      txFile.open(txFilePath.c_str(), O_READ);
+      fileNameTxChar.writeValue(txFileName);
+      
+      // Create a time counter for funsies
+      txStartTime = millis();
+      
+      Serial.println("File opened. Transmitting...");
+      fileDataTxActive = true;
     }
-    File dataFile = SD.open(filePath.c_str(), FILE_READ);
-    Serial.println(dataFile.name());
-    // Create a time counter for funsies
-    int txStartTime = millis();
-    Serial.println("File opened. Transmitting...");
     // Parse through the datafile, chunking data into payloads and transmitting
     // each payload sequentially
-    while (dataFile.available()) {
+    else if (txFile.available()) {
       char buffer[fileTxBufferSize]; // Create a buffer to fill with data
-      int bytesRead = dataFile.read(buffer, fileTxBufferSize);
+      int bytesRead = txFile.read(buffer, fileTxBufferSize);
       // Serial.print(buffer);
       // Write the full buffer to the characteristic
-      fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
+      fileTxDataChar.writeValue((uint*)buffer, bytesRead);
+      Serial.print("Packet Written to Central: ");
+      Serial.println(buffer);
       delay(30); // Small delay to prevent BLE stack overflow
     }
 
+    else {
+      int txElapsedTime = (millis() - txStartTime) / 1000;
+      Serial.print("File transmission completed in: ");
+      Serial.println(txElapsedTime);
+      fileDataTxActive = false;
+      fileTxActive = false;
 
-    int txElapsedTime = millis() - txStartTime;
-    // Send a notification when the end is reached
-    fileTransferCompleteChar.writeValue("TRANSFER_COMPLETE");
-    Serial.print("File transmission completed in:");
-    Serial.print(txElapsedTime);
+      txFile.close();
+      fileTxCompleteChar.writeValue("TRANSFER_COMPLETE");
+      txFileListIndex++;
 
-    // Close the file
-    dataFile.close();
-  */
+
+        // Should we have a query to the client to confirm file deletion? Probably
+    }
+    return true;
   }
 
   else {

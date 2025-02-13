@@ -45,7 +45,6 @@ class DataRecorder {
     bool recording = false;
     // SD Card file variables
     // int currentCount;
-    SdFat32 sd;
     File32 imuDataFile;                   // data file object to be used for writing during record mode
     int fileNameLength = 150;
     // int chipSelect{};                     // Chip select pin to be input by the constructor
@@ -53,6 +52,7 @@ class DataRecorder {
   
   // Public variables and functions
   public:
+    SdFat32 sd;
     DataRecorder(); // Constructor
     void displayDirectory(const char* dirName="/", int numTabs=0);  // Print out the contents of the onbaord SD card
     char* readIMU();                      // Read Values from the onboard IMU
