@@ -98,6 +98,7 @@ bool inBLEConfigMode = false;
 int bleConfigSequence[] = {100, 1400, 100, 100};
 bool inFileTxMode = false;
 int fileTxSequence[] = {400, 100};
+bool inStandbyMode = true;
 int standbySequence[] = {1900, 100};
 int connectionTimeout = 20; // Timeout [s] for BLE connection search
 
@@ -135,6 +136,7 @@ void returnToStandbyMode() {
   // Code to clean disconnect from client
   // Code to save and close file
   // Update whitelist file with new filenames
+  inStandbyMode = true;
   }
 }
 
@@ -203,6 +205,7 @@ void handleButtonEvent() {
 
   // 2 consecutive button presses indicate the start of a new operating mode
     if (consecutiveButtonPresses == 2) {
+      inStandbyMode = false;
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
       if (buttonPressDuration > 3) {
@@ -243,7 +246,17 @@ void handleButtonEvent() {
 
     // Single press and hold indicates an exit event. Code will exit from whichever mode was previously active
     else if (consecutiveButtonPresses == 1 && buttonPressDuration > 3) {
-      returnToStandbyMode();
+      if (buttonPressDuration > 3) {
+        Serial.println("Returning to Standby Mode");
+        returnToStandbyMode();
+      }
+
+      else if ((buttonPressDuration >=10) && inStandbyMode) {
+        // We can only enter sleep mode if coming from standby mode. This ensures clean exits of any of
+        // the mode functions. Sleep mode is configured to disable all of the periphrials and delay the loop
+        // for a bit every loop cycle. A wakeup event will reset the system.
+      }
+      
     } 
        
     // Reset variables at end of handling sequence
@@ -258,7 +271,7 @@ void setup() {
   // ledManager.initialize();
   // while(!Serial) // This code ensures the program only runs if the serial monitor is open. Uncomment if desired
     // Initialize Input Buttons
-  pinMode(buttonPin, INPUT);
+  pinMode(buttonPin, INPUT_PULLDOWN);
   pinMode(chipSelect, OUTPUT);
   digitalWrite(chipSelect, HIGH);
 
@@ -331,7 +344,7 @@ void loop() {
     }
   }
 
-  else {
+  else if (inStandbyMode) {
     // Nothing Happening, in standby mode
     ledManager.blink(standbySequence, sizeof(standbySequence), "G");
   }

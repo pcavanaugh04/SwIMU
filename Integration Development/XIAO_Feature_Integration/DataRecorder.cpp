@@ -84,7 +84,7 @@ char* DataRecorder::readIMU() {
   float gyroZ = imuSensor.readFloatGyroZ();
   numSamples++;
   // Format in a string that will follow a CSV format
-  sprintf(imuBuffer, "%.4f, %.3f, %.3f, %.3f, %.3f, %.3f, %.3f", imuTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
+  sprintf(imuBuffer, "%.3f, %.3f, %.3f, %.3f, %.2f, %.2f, %.2f", imuTime, accelX, accelY, accelZ, gyroX, gyroY, gyroZ);
   // Print data line to serial monitor
   if (recording) {
     imuDataFile.println(imuBuffer);

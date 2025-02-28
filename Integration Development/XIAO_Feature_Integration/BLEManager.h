@@ -89,8 +89,9 @@ class BLEManager {
     DataRecorder& dataRecorder;
     BLEDevice central;
     BLEDevice getCentral();
-    const int fileTxBufferSize = 244; // Oddly enough this seems to be the bandwidth of the string Char
+    // const int fileTxBufferSize; 
     unsigned long dateTimeRefrenceMillis; // refrence value for incrementing local timestamp
+    // const int fileTxBufferSize = 244; // Oddly enough 244 bytes seems to be the bandwidth of the BLE char
     // unsigned long timeoutCounter;
     unsigned long timeoutStart;
     int timeoutDuration;
@@ -101,6 +102,7 @@ class BLEManager {
     bool fileTxActive;
     bool fileDataTxActive = false;
     bool fileEndFlag;
+    bool fileSetup = false;
 
     int txFileListIndex = 0;
     int txStartTime;

@@ -56,6 +56,7 @@ class BLEClient(BleakClient):
         self.connected = False
         self.file_rx_setup_flag = False
         super().__init__(address, timeout=timeout)
+        file_data = b""
 
     async def handle_disconnect(self, client):
         print("Disconnected from server!")
@@ -153,12 +154,11 @@ class BLEClient(BleakClient):
     async def write_to_file(self, save_path, file_data):
         with open(save_path, "wb") as f:
             f.write(file_data)
-
         print(f"Recieved Data Written to file: {save_path}")
-        
-    
+
                 
     async def file_rx_mode(self):
+
         # Send Request for File transfer
         await user_input("Press Enter to Start File Transfer")
 
@@ -171,27 +171,30 @@ class BLEClient(BleakClient):
 
         else:
             print("Unhandled error case. Potentially no files available. Canceling transfer")
-
-            return
-        
-        # setup variable to recieve file data
-        file_data = b""      
+            return   
         
         # define and assign notification callbacks on first file only
         if not self.file_rx_setup_flag:
+            
+            file_data = b""
             # Callback to accumulate packets of file data from server
             async def handle_file_data(sender, data):
-                nonlocal file_data
-                file_data += data
-                
-            # Callback to handle completion notificaiton
+                if data:
+                    nonlocal file_data
+                    # packet = data.decode("utf-8")
+                    file_data += data
+                    print(f"Written to file data variable: {data}")
+                else:
+                    print("Received empty data packet!")
+               
+            # Setup the notificaiton handler
+            await self.start_notify(FILE_TX_UUID, handle_file_data)
+            
+                        # Callback to handle completion notificaiton
             def handle_transfer_complete(sender, data):
                 if data.decode("utf-8") == "TRANSFER_COMPLETE":
                     transfer_complete.set_result(True)
                     print("Transfer Complete")
-            
-            # Setup the notificaiton handler
-            await self.start_notify(FILE_TX_UUID, handle_file_data)
             
             # config file complete notificaiton manager
             await self.start_notify(FILE_TX_COMPLETE_UUID, handle_transfer_complete)

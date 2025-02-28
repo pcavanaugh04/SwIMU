@@ -23,6 +23,8 @@ config name
 
 #include "BLEManager.h"
 
+const int fileTxBufferSize = 244; // Oddly enough 244 bytes seems to be the bandwidth of the BLE char
+
 static std::map<const char*, BLEManager*> characteristicToInstanceMap;
 
 String bytesToString(byte* data, const int length) {
@@ -108,10 +110,12 @@ BLEManager::BLEManager(DataRecorder& dataRecorder): dataRecorder(dataRecorder), 
       // Initialize BLE File Transfer Service and Characteristics
       fileTxService(fileTxServiceUuid),
       fileTxRequestChar(fileTxRequestCharUuid, BLEWrite | BLERead, 20),
-      fileTxDataChar(fileTxDataCharUuid, BLENotify, fileTxBufferSize, false),
       fileTxCompleteChar(fileTxCompleteCharUuid, BLENotify, 30),
+      fileTxDataChar(fileTxDataCharUuid, BLERead | BLENotify, fileTxBufferSize, false),
       fileNameTxChar(fileNameTxCharUuid, BLERead, 60) {
 
+  // Needs to be defined in the body due to needing value of fileTxBufferSize
+ 
   // Map characteristics that will be used for event handlers
   characteristicToInstanceMap[imuRequestChar.uuid()] = this;
   characteristicToInstanceMap[dateTimeConfigChar.uuid()] = this;
@@ -460,7 +464,6 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
       Serial.println(whiteListFileNames.size() - txFileListIndex);
       fileTxRequestChar.writeValue("MORE_FILES");
       fileTxActive = true;
-
       }
 
     else {
@@ -473,6 +476,7 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
       fileTxActive = false;
       txFileListIndex = 0;
     }
+    fileSetup = false;
   }
 }
 bool BLEManager::enterFileTxMode(int timeout) {
@@ -505,7 +509,7 @@ bool BLEManager::txFileData() {
     */
     // If on first iteration of fileTxActive loop, fileTxDataFlag will be false.
     // open the specified file
-    if (!fileDataTxActive) {
+    if (!fileDataTxActive && !fileSetup) {
       String txFileName = whiteListFileNames[txFileListIndex];
       String txFilePath = "accelDir/" + txFileName;
       Serial.print("Attempting to open file: ");
@@ -517,26 +521,55 @@ bool BLEManager::txFileData() {
         return false;
       }
 
-      txFile.open(txFilePath.c_str(), O_READ);
+      txFile.open(txFilePath.c_str(), O_READ | O_BINARY);
       fileNameTxChar.writeValue(txFileName);
       
       // Create a time counter for funsies
       txStartTime = millis();
       
       Serial.println("File opened. Transmitting...");
-      fileDataTxActive = true;
+      fileSetup = true;
+      // fileDataTxActive = true;
     }
+    
+    else if (!fileDataTxActive && fileSetup) {
+    
+    }
+    
     // Parse through the datafile, chunking data into payloads and transmitting
     // each payload sequentially
     else if (txFile.available()) {
-      char buffer[fileTxBufferSize]; // Create a buffer to fill with data
-      int bytesRead = txFile.read(buffer, fileTxBufferSize);
-      // Serial.print(buffer);
+      char txBuffer[fileTxBufferSize]; // Create a buffer to fill with data
+      int bytesRead = txFile.read(txBuffer, fileTxBufferSize);
+      // txBuffer[bytesRead] = '\0'; // Null-terminate
+
+      // Serial.print("Bytes read from file: ");
+      // Serial.println(bytesRead);  // Should be > 0
+      // Serial.print("Buffer contents: ");
+      // Serial.println(buffer);     // Should show file contents
+      // Debug print contents in hex
+      Serial.print("Buffer Contents: ");
+      Serial.println(txBuffer);
       // Write the full buffer to the characteristic
-      fileTxDataChar.writeValue((uint*)buffer, bytesRead);
-      Serial.print("Packet Written to Central: ");
-      Serial.println(buffer);
-      delay(30); // Small delay to prevent BLE stack overflow
+      char* testPacket = "Test Packet";
+      bool success = fileTxDataChar.writeValue((uint*)txBuffer, bytesRead);
+
+      // Test line with hardcoded value   
+      // const char* testData = "HELLO FROM PERIPHERAL";
+      // bool success = fileTxDataChar.writeValue((const uint*)testData, strlen(testData));
+      delay(30);
+
+      /*
+      if (!success) {
+        Serial.println("ERROR: Failed to write to characteristic!");
+      } 
+      else {
+        Serial.println("Write successful");
+      }
+      */
+      // Serial.print("Packet Written to Central: ");
+      // Serial.println(buffer);
+      // delay(500); // Small delay to prevent BLE stack overflow
     }
 
     else {

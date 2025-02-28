@@ -70,6 +70,7 @@ async def main():
             start_time = time.perf_counter()
             nonlocal file_data
             file_data += data
+            print(f"Data Packet Recieved: {data}")
         
         # Setup the notificaiton handler
         await client.start_notify(FILE_TX_UUID, handle_file_data)

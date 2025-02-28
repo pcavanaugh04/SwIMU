@@ -39,7 +39,7 @@
 */
 
 #include <SPI.h>
-#include <SD.h>
+#include <SdFat.h>
 #include <ArduinoBLE.h>
 #include <string.h>
 
@@ -49,6 +49,7 @@ int currentCount;
 bool fileConfigMode = false;
 bool fileTxMode = false;
 String dataFileName;
+SdFat32 sd;
 // BLE Setup
 
 // Service to transfer file data
@@ -87,7 +88,8 @@ String bytesToString(byte* data, int length) {
 
 void findFileToTx() {
   // For now we'll identify and transmit the latest file in the accelDir directory 
-  File accelDir =  SD.open("/accelDir");
+  /*
+  File32 accelDir =  SD.open("/accelDir");
   unsigned long latestTimeStamp = 0;
   fileTxMode = false;
   if (!accelDir || !accelDir.isDirectory()) {
@@ -96,6 +98,7 @@ void findFileToTx() {
     }
   
   // Cycle through the directory and identify the most recent timestamp from metadata
+  
   while (true) {
     File entry = accelDir.openNextFile();
     if (!entry) break; // No more files
@@ -106,6 +109,8 @@ void findFileToTx() {
     }
     accelDir.close();
   }
+  */
+  dataFileName = "2025_02_10_12_19_17-justin-test.csv";
   if (dataFileName.length() > 0) {
     fileNameResponseChar.writeValue(dataFileName);
   }
@@ -118,11 +123,15 @@ void transmitFileData() {
   Serial.print("Attempting to open file: ");
   Serial.println(filePath);
         // Check to see if file exists
-  if (!SD.exists(filePath)){
-    Serial.println("ERROR: FIle not recognized!");
+  if (!sd.exists(filePath)){
+    Serial.println("ERROR: File not recognized!");
+    return;
   }
-  File dataFile = SD.open(filePath.c_str(), FILE_READ);
-  Serial.println(dataFile.name());
+  
+  File32 dataFile;
+  dataFile.open(filePath.c_str(), O_READ);
+  char buf[100];
+  Serial.println(dataFile.getName(buf, 100));
   // Create a time counter for funsies
   int txStartTime = millis();
   Serial.println("File opened. Transmitting...");
@@ -131,9 +140,9 @@ void transmitFileData() {
   while (dataFile.available()) {
     char buffer[fileTxBufferSize]; // Create a buffer to fill with data
     int bytesRead = dataFile.read(buffer, fileTxBufferSize);
-    // Serial.print(buffer);
+    Serial.print(buffer);
     // Write the full buffer to the characteristic
-    fileTransferDataChar.writeValue((uint*)buffer, bytesRead);
+    fileTransferDataChar.writeValue((uint8_t*)buffer, bytesRead);
     delay(30); // Small delay to prevent BLE stack overflow
 
   }
@@ -166,25 +175,35 @@ void onFileTxRequest(BLEDevice central, BLECharacteristic characteristic) {
   }
 }
 // From previous tutorials, useful to debug our SD card contents
-void displayDirectory(File dir, int numTabs=0) {
-  while (true) {
-    File entry = dir.openNextFile();
-    if (!entry) break;
-
-    for (int i=0; i < numTabs; i++)
-      Serial.print('\t');
-
-    Serial.print(entry.name());
-    if (entry.isDirectory()) {
-      Serial.println("/");
-      displayDirectory(entry, numTabs + 1);
-    }
-    else {
-      Serial.print("\t\t");
-      Serial.println(entry.size(), DEC);
-    }
-    entry.close();
+void displayDirectory(const char* dirName, int numTabs=0) {
+  File32 dir;
+  if (!dir.open(dirName, O_RDONLY)) {
+    Serial.print("Failed to open directory: ");
+    Serial.println(dirName);
+    return;
   }
+
+  File32 entry;
+  while (entry.openNext(&dir, O_RDONLY)) {
+        entry = dir.openNextFile();
+        if (!entry) break; // No more files
+
+        for (int i = 0; i < numTabs; i++) {
+            Serial.print("\t");
+        }
+        char buf[100];
+        entry.getName(buf, sizeof(buf));
+        Serial.print(buf);
+        if (entry.isDir()) {
+            Serial.println("/");
+
+            displayDirectory(buf, numTabs + 1); // Recursive call for subdirectories
+        } else {
+            Serial.print("\t\t");
+            Serial.println(entry.fileSize());
+        }
+        entry.close();
+    }
 }
 
 void setup() {
@@ -195,7 +214,7 @@ void setup() {
   Serial.println("Initializing SD Card...");
   delay(1000);
 
-  if (!SD.begin(chipSelect)) {
+  if (!sd.begin(chipSelect, SD_SCK_MHZ(25))) {
     Serial.println("Initializing failed!");
     while (1);
   }
@@ -204,9 +223,7 @@ void setup() {
     Serial.println("Initialization done.");
   }
 
-  File root = SD.open("/");
-  displayDirectory(root);
-  root.close();
+  displayDirectory("accelDir");
   
   BLE.setDeviceName("SwIMU");
   BLE.setLocalName("SwIMU");
