@@ -406,7 +406,7 @@ class MainWindow(QtWidgets.QWidget):
         self.init_ui()
         
         # Data buffers (replace these with your BLE data lists)
-        self.max_points = 100  # maximum points to display
+        self.max_points = 300  # maximum points to display
         
         # Timer to update plots
         self.timer = QtCore.QTimer()
