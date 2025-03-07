@@ -195,6 +195,15 @@ String BLEManager::getDateTimeStr() {
   // Parse the datetime string using sscanf
   int parsed = sscanf(dateTimeStr.c_str(), "%d_%d_%d_%d_%d_%d", &year, &month, &day, &hours, &minutes, &seconds);
 
+  /*
+  Serial.print("Current value of hours: ");
+  Serial.print(hours);
+  Serial.print(". Current value of minutes: ");
+  Serial.print(minutes);
+  Serial.print(". Current value of seconds: ");
+  Serial.println(seconds);
+  */
+  
   // Check if parsing succeeded (6 items should be matched)
   if (parsed != 6) {
     Serial.print("Error: Invalid datetime format. Number of fields recognized: ");
@@ -207,13 +216,24 @@ String BLEManager::getDateTimeStr() {
   // Calculate new values for hours, minutes and seconds based on the number of new seconds
   unsigned long newSeconds = (millis() - dateTimeRefrenceMillis) / 1000;
   int newTotalSeconds = (hours * 3600) + (minutes * 60) + seconds + newSeconds;
-  hours = newTotalSeconds / 3600;
-  minutes = newTotalSeconds % 3600 / 60;
-  seconds = newTotalSeconds % 3600 % 60;
+  Serial.print("Seconds passed since refrence: ");
+  Serial.println(newSeconds);
+  int newHoursPlace = newTotalSeconds / 3600;
+  int newMinutesPlace = newTotalSeconds % 3600 / 60;
+  int newSecondsPlace = newTotalSeconds % 3600 % 60;
+  /*
+  Serial.print("New value of hours: ");
+  Serial.print(newHoursPlace);
+  Serial.print(". New value of minutes: ");
+  Serial.print(newMinutesPlace);
+  Serial.print(". New value of seconds: ");
+  Serial.println(newSecondsPlace);
+  */
   char buffer[25];
-  sprintf(buffer, "%04d_%02d_%02d_%02d_%02d_%02d", year, month, day, hours, minutes, seconds);
-  dateTimeStr = String(buffer);
-  return dateTimeStr;
+  sprintf(buffer, "%04d_%02d_%02d_%02d_%02d_%02d", year, month, day, newHoursPlace, newMinutesPlace, newSecondsPlace);
+  String updateDateTimeStr = String(buffer);
+  Serial.println("New datetime str: " + updateDateTimeStr);
+  return updateDateTimeStr;
 }
 
 void BLEManager::enterPairingMode(int timeout) {
