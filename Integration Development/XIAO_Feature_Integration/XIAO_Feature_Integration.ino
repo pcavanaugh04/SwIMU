@@ -136,8 +136,10 @@ void returnToStandbyMode() {
   // Code to clean disconnect from client
   // Code to save and close file
   // Update whitelist file with new filenames
-  inStandbyMode = true;
   }
+  
+  inStandbyMode = true;
+
 }
 
 // Function to detect sequence and duration of button presses
@@ -203,8 +205,9 @@ void handleButtonEvent() {
     Serial.println("s");
     ledManager.turnOff();
 
-  // 2 consecutive button presses indicate the start of a new operating mode
-    if (consecutiveButtonPresses == 2) {
+  // 2 consecutive button presses indicate the start of a new operating mode.
+  // Only accept a change in operating mode if coming from standby mode
+    if ((consecutiveButtonPresses == 2) && (inStandbyMode)) {
       inStandbyMode = false;
 
   // A long hold indicates going into bluetooth pairing/transmit mode  
@@ -223,7 +226,8 @@ void handleButtonEvent() {
         dataRecorder.startDataRecording(dataFileName.c_str());
         }
       }
-    else if (consecutiveButtonPresses == 3) {
+    else if ((consecutiveButtonPresses == 3) && (inStandbyMode)) {
+      inStandbyMode = false;
       // 3 button presses enters pure BLE funcitonality. <3s on last press is config mode, >3s is fileTXMode
       if (buttonPressDuration < 3) {
         // Serial.println("Entering Bluetooth Pairing Mode!");
@@ -250,12 +254,15 @@ void handleButtonEvent() {
         Serial.println("Returning to Standby Mode");
         returnToStandbyMode();
       }
-
+      /*
       else if ((buttonPressDuration >=10) && inStandbyMode) {
         // We can only enter sleep mode if coming from standby mode. This ensures clean exits of any of
         // the mode functions. Sleep mode is configured to disable all of the periphrials and delay the loop
         // for a bit every loop cycle. A wakeup event will reset the system.
+
+        Potential implementation if desired to implement a sleep mode
       }
+      */
       
     } 
        
@@ -294,8 +301,7 @@ void loop() {
     if (bleManager.inPairingMode) {
       bleManager.pairCentral();
       if (bleManager.reachedTimeout) {
-        inBLEConfigMode = false;
-        ledManager.turnOff();
+        returnToStandbyMode();
       }
     }
 
@@ -315,14 +321,12 @@ void loop() {
     if (bleManager.inPairingMode) {
       bleManager.pairCentral();
       if (bleManager.reachedTimeout) {
-        inDataRecordTxMode = false;
-        ledManager.turnOff();
+        returnToStandbyMode();
       }
     }
     else {
       if (!bleManager.imuRecordandTx()) {
-        inDataRecordTxMode = false;
-        ledManager.turnOff();
+        returnToStandbyMode();
       }
     }
   }
@@ -334,13 +338,11 @@ void loop() {
     if (bleManager.inPairingMode) {
       bleManager.pairCentral();
       if (bleManager.reachedTimeout) {
-        inFileTxMode = false;
-        ledManager.turnOff();
+        returnToStandbyMode();
       }
     }  
     else if (!bleManager.txFileData()) {
-      inFileTxMode = false;
-      ledManager.turnOff();
+      returnToStandbyMode();
     }
   }
 
