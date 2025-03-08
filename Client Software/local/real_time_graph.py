@@ -438,7 +438,7 @@ class MainWindow(QMainWindow):
         uic.loadUi(ui_path, self)
 
         # Accelerometer Plot
-        self.accel_plot = pg.PlotWidget(title="Accelerometer Data")
+        # self.accel_plot = pg.PlotWidget(title="Accelerometer Data")
         self.accel_plot.addLegend()
         self.accel_plot.setLabel('left', "Acceleration (g)")
         self.accel_plot.setLabel('bottom', "Samples")
@@ -447,7 +447,7 @@ class MainWindow(QMainWindow):
         self.accel_z_curve = self.accel_plot.plot(pen='b', name='Accel Z')
         
         # Gyroscope Plot
-        self.gyro_plot = pg.PlotWidget(title="Gyroscope Data")
+        # self.gyro_plot = pg.PlotWidget(title="Gyroscope Data")
         self.gyro_plot.addLegend()
         self.gyro_plot.setLabel('left', "Angular Velocity (°/s)")
         self.gyro_plot.setLabel('bottom', "Samples")
@@ -468,12 +468,16 @@ class MainWindow(QMainWindow):
         # so no need to check for client status
         if not self.in_data_tx_mode:
             # send peripheral the start command
+            # self.graph_data = None
+            self.graph_update_timer.start()   
             self.client.start_IMU_readings()
             self.data_tx_button.setText("Stop Data Tx")
             self.in_data_tx_mode = True
 
         else:
             self.client.stop_IMU_readings()
+            # self.graph_data = None # Decide how to clear graph data after stopping transmission
+            self.graph_update_timer.stop()
             self.data_tx_button.setText("Stop Data Tx")
             self.in_data_tx_mode = False
 
@@ -481,16 +485,14 @@ class MainWindow(QMainWindow):
     def start_stop_file_tx(self):
         # Start Data Transmission. This method will be inaccessible until the client is connected,
         # so no need to check for client status
-        if not self.in_data_tx_mode:
+        if not self.in_file_tx_mode:
             # send peripheral the start command
-            self.client.start_IMU_readings()
-            self.data_tx_button.setText("Stop Data Tx")
-            self.in_data_tx_mode = True
+            self.data_tx_button.setText("Stop File Tx")
+            self.in_file_tx_mode = True
 
         else:
-            self.client.stop_IMU_readings()
-            self.data_tx_button.setText("Stop Data Tx")
-            self.in_data_tx_mode = False
+            self.file_tx_button.setText("Start File Tx")
+            self.in_file_tx_mode = False
 
     @pyqtSlot()
     def send_config_data(self):
@@ -511,18 +513,33 @@ class MainWindow(QMainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
         self.thread.start()
     
-    def update_connection_status(self, connected):
-        if connected:
-            self.connect_button.setText("Disconnect")
+    def update_connection_status(self, connection_state):
+        if connection_state:
             self.client = self.worker.client
-            self.client.new_data.connect(self.update_data)
-            self.timer.start()
+            self.connect_button.setText("Disconnect")
+
+            if 'config' in connection_state:
+                # self.in_device_config_mode = True
+                self.config_input_frame.setEnabled(True)
+
+            elif 'data_tx' in connection_state:
+                # self.in_data_tx_mode = True
+                self.client.new_data.connect(self.update_data)
+                self.data_tx_button.setEnabled(True)
+
+            elif 'file_tx' in connection_state:
+                # self.in_file_tx_mode = True
+                self.file_tx_button.setEnabled(True)
 
         else:
+            # Disable buttons and reset UI elements
             self.connect_button.setText("Connect")
-            self.timer.stop()
+            self.config_input_frame.setEnabled(True)
+            self.data_tx_button.setEnabled(False)
+            self.file_tx_button.setEnabled(False)
+
+            # Resit client attribute
             self.client = None
-            self.graph_data = None
             
     def update_data(self, data):
         # print(f"Data Recieved: {data}")
