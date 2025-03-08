@@ -203,14 +203,16 @@ String BLEManager::getDateTimeStr() {
   Serial.print(". Current value of seconds: ");
   Serial.println(seconds);
   */
-  
+
   // Check if parsing succeeded (6 items should be matched)
   if (parsed != 6) {
     Serial.print("Error: Invalid datetime format. Number of fields recognized: ");
     Serial.println(parsed);
     Serial.print("Contents of dateTimeStr variable: ");
     Serial.println(dateTimeStr);
-    return "ERROR";
+    dateTimeRefrenceMillis = millis();
+    dateTimeStr = "0000_00_00_00_00_00";
+    return "0000_00_00_00_00_00";
   }
 
   // Calculate new values for hours, minutes and seconds based on the number of new seconds
@@ -310,7 +312,6 @@ void BLEManager::onPersonNameCharWritten(BLEDevice central, BLECharacteristic ch
   fileName = dateTimeStr + "-" + personName + "-" + activityType;
   Serial.println("New File Name: " + fileName);
   fileNameConfigChar.writeValue(fileName);
-
 }
 
 void BLEManager::onActivityTypeCharWritten(BLEDevice central, BLECharacteristic characteristic) {
@@ -323,6 +324,8 @@ void BLEManager::onActivityTypeCharWritten(BLEDevice central, BLECharacteristic 
   fileName = dateTimeStr + "-" + personName + "-" + activityType;
   Serial.println("New File Name: " + fileName);
   fileNameConfigChar.writeValue(fileName);
+  // delay(1000);
+  fileConfigedFlag = true;
 }
 
 BLEDevice BLEManager::getCentral() {

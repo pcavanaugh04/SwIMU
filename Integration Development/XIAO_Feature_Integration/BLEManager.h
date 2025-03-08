@@ -111,8 +111,8 @@ class BLEManager {
     File32 txFile; 
 
     String dateTimeStr;
-    String personName;
-    String activityType;
+    String personName = "none";
+    String activityType = "none";
     String fileName;
 
   // Public variables and functions
@@ -140,7 +140,8 @@ class BLEManager {
     // bool FileTxMode(int timeout);  
     bool connected = false;  
     bool inPairingMode = false;    
-    bool reachedTimeout;
+    bool reachedTimeout = false;
+    bool fileConfigedFlag = false;
     // Read Values from the onboard IMU
     // void updateDateTimeStr();
     void startBLE();

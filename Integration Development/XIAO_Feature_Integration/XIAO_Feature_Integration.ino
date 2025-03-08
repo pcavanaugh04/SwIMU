@@ -307,6 +307,10 @@ void loop() {
 
     else {
       bleManager.poll();
+      if (bleManager.fileConfigedFlag) {
+        bleManager.exitConfigMode();
+        returnToStandbyMode();
+      }
     }
   }
 
