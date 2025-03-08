@@ -31,8 +31,8 @@ import os
 from bleak import BleakScanner, BleakClient
 import sys
 import numpy as np
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
+from PyQt5 import QtWidgets, QtCore, uic
+from PyQt5.QtWidgets import QMainWindow, QApplication, QWidget, QVBoxLayout, QPushButton, QLabel
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 import pyqtgraph as pg
 
@@ -144,13 +144,12 @@ class BLEClient(BleakClient, QObject):
         await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
         # Repeat with the activity 
         input_activity = await user_input("Enter the SwIMU activty name: ")
-        await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
         datetime_str = datetime.now().strftime(DT_FMT)
         await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        
+        await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
         # Get the new filename from the server after sending our config information
-        new_file_name = await self.read_gatt_char(FILE_NAME_UUID)
-        print(f"Configured file name: {new_file_name.decode('utf-8')}")
+        # new_file_name = await self.read_gatt_char(FILE_NAME_UUID)
+        # print(f"Configured file name: {new_file_name.decode('utf-8')}")
         
     async def rx_IMU_readings_mode(self):
         ### ------------------ BLE Notify Implementation ----------------- ### 
@@ -178,16 +177,23 @@ class BLEClient(BleakClient, QObject):
         # Write the start request
         await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
         start_time = time.perf_counter()
-
-        while True:
+        self.tx_active = True
+        while self.tx_active:
             await asyncio.sleep(0.1)
-        # Write the end request to stop transmitting
+
+    async def start_IMU_readings(self):
+        await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
+
+    async def stop_IMU_readings(self):
         await self.write_gatt_char(IMU_REQUEST_UUID, b"END")
+        self.tx_active = False
+        """
         record_time = time.perf_counter() - start_time
 
         print("----------------- BLE Notify Implementation ---------------")    
         print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
         print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
+"""
         
     
     async def write_to_file(self, save_path, file_data):
@@ -400,7 +406,7 @@ class BLEWorker(QObject):
             self.loop.call_soon_threadsafe(self.loop.stop)
                         
 
-class MainWindow(QtWidgets.QWidget):
+class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.init_ui()
@@ -417,9 +423,19 @@ class MainWindow(QtWidgets.QWidget):
         
         # initialize a client attribute, update when BLEWorker emits connected signal
         self.client = None
+
+        # mode flags
+        self.in_data_tx_mode = False
+        self.in_device_config_mode = False
+        self.in_file_tx_mode = False
         
     def init_ui(self):
-        layout = QtWidgets.QVBoxLayout()
+        # Initilize elements of layout and create connections to slots and signals
+
+        # layout = QtWidgets.QVBoxLayout()
+        import os
+        ui_path = os.path.join(os.getcwd(), "SwIMU_client_UI.ui")
+        uic.loadUi(ui_path, self)
 
         # Accelerometer Plot
         self.accel_plot = pg.PlotWidget(title="Accelerometer Data")
@@ -441,12 +457,48 @@ class MainWindow(QtWidgets.QWidget):
 
         # Connect Button
         # Setup button UI to connect with BLE device
-        self.connect_button = QPushButton("Connect to Device")
         self.connect_button.clicked.connect(self.run_BLE_worker)
-        layout.addWidget(self.connect_button)
-        layout.addWidget(self.accel_plot)
-        layout.addWidget(self.gyro_plot)
-        self.setLayout(layout)
+        self.data_tx_button.clicked.connect(self.start_stop_data_tx)
+        self.file_tx_button.clicked.connect(self.start_stop_file_tx)
+        self.config_field.returnPressed.connect(self.send_config_data)
+
+    @pyqtSlot()
+    def start_stop_data_tx(self):
+        # Start Data Transmission. This method will be inaccessible until the client is connected,
+        # so no need to check for client status
+        if not self.in_data_tx_mode:
+            # send peripheral the start command
+            self.client.start_IMU_readings()
+            self.data_tx_button.setText("Stop Data Tx")
+            self.in_data_tx_mode = True
+
+        else:
+            self.client.stop_IMU_readings()
+            self.data_tx_button.setText("Stop Data Tx")
+            self.in_data_tx_mode = False
+
+    @pyqtSlot()
+    def start_stop_file_tx(self):
+        # Start Data Transmission. This method will be inaccessible until the client is connected,
+        # so no need to check for client status
+        if not self.in_data_tx_mode:
+            # send peripheral the start command
+            self.client.start_IMU_readings()
+            self.data_tx_button.setText("Stop Data Tx")
+            self.in_data_tx_mode = True
+
+        else:
+            self.client.stop_IMU_readings()
+            self.data_tx_button.setText("Stop Data Tx")
+            self.in_data_tx_mode = False
+
+    @pyqtSlot()
+    def send_config_data(self):
+        # Get line of text from config field
+        config_data = self.config_field.text()
+        # Send the data to the peripheral
+        pass
+
     
     def run_BLE_worker(self):
         self.worker = BLEWorker()
@@ -467,7 +519,7 @@ class MainWindow(QtWidgets.QWidget):
             self.timer.start()
 
         else:
-            self.connect_button.setText("Connect to Device")
+            self.connect_button.setText("Connect")
             self.timer.stop()
             self.client = None
             self.graph_data = None
@@ -504,7 +556,7 @@ class MainWindow(QtWidgets.QWidget):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     window = MainWindow()
-    window.resize(800, 600)
-    window.setWindowTitle("BLE Accelerometer & Gyro Visualizer")
+    # window.resize(800, 600)
+    window.setWindowTitle("BLE Accelerometer and Gyro Visualizer")
     window.show()
     sys.exit(app.exec_())
