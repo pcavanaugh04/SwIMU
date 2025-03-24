@@ -69,7 +69,7 @@ const int buttonPin = 0;  // I/O pin where the button is connected
 const int RED_LED = 12;
 const int GREEN_LED = 13;
 const int BLUE_LED = 14;
-const int chipSelect = 5;  // Digital I/O pin needed for the SPI breakout
+const int chipSelect = 4;  // Digital I/O pin needed for the SPI breakout
 
 // Create instance of a DataRecorder class to encapsulate data reading and file recording
 DataRecorder dataRecorder = DataRecorder();
