@@ -25,7 +25,7 @@ https://realpython.com/async-io-python/
 import sys
 from SwIMU_BLE import BLEWorker
 from PyQt5 import QtWidgets, QtCore, uic
-from PyQt5.QtWidgets import QMainWindow,
+from PyQt5.QtWidgets import QMainWindow
 from PyQt5.QtCore import QObject, QThread, pyqtSignal, pyqtSlot
 
 
@@ -51,6 +51,9 @@ class MainWindow(QMainWindow):
         self.in_data_tx_mode = False
         self.in_device_config_mode = False
         self.in_file_tx_mode = False
+        self.config_fields = ['Name', 'Activity']
+        self.config_info = {}
+        self.config_field_index = 0
         
     def init_ui(self):
         # Initilize elements of layout and create connections to slots and signals
@@ -83,7 +86,7 @@ class MainWindow(QMainWindow):
         self.connect_button.clicked.connect(self.run_BLE_worker)
         self.data_tx_button.clicked.connect(self.start_stop_data_tx)
         self.file_tx_button.clicked.connect(self.start_stop_file_tx)
-        self.config_field.returnPressed.connect(self.send_config_data)
+        self.config_input_field.returnPressed.connect(self.collect_config_data)
 
     @pyqtSlot()
     def start_stop_data_tx(self):
@@ -118,32 +121,54 @@ class MainWindow(QMainWindow):
             self.in_file_tx_mode = False
 
     @pyqtSlot()
-    def send_config_data(self):
+    def collect_config_data(self):
         # Get line of text from config field
-        config_data = self.config_field.text()
-        # Send the data to the peripheral
-        pass
+        if self.config_mode:    
+            config_text = self.config_input_field.text()
+            
+            self.config_info[self.config_fields[self.config_field_index]] = config_text 
+            
+            self.config_field_index += 1
+            
+            self.update_config_field_label()
+            print(f"Contents of config dict: {self.config_info}")
+            # If all data has been entered, update client property and clean up process
+            if self.config_field_index >= len(self.config_fields):
+                self.client.config_entires = self.config_info
+                self.config_field_index = 0
+
+    
+    def update_config_field_label(self):
+        self.config_input_field.clear()
+        
+        if self.config_field_index >= len(self.config_fields):
+            self.config_field_label.setText("Connect to Configure Device")
+            return
+        
+        if self.config_mode:
+            self.config_field_label.setText(f"Enter the User's {self.config_fields[self.config_field_index]}:")
+            
+
 
     
     def run_BLE_worker(self):
         self.worker = BLEWorker()
         self.worker.connected.connect(self.update_connection_status)
-        self.thread = QThread()
-        self.worker.moveToThread(self.thread)
-        self.thread.started.connect(self.worker.run)
-        self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
-        self.thread.finished.connect(self.thread.deleteLater)
-        self.thread.start()
+        self.worker.start()
     
     def update_connection_status(self, connection_state):
-        if connection_state:
+        print(f"Recieved connection update: {connection_state}")
+        
+        if len(connection_state) > 0:
             self.client = self.worker.client
             self.connect_button.setText("Disconnect")
 
             if 'config' in connection_state:
                 # self.in_device_config_mode = True
                 self.config_input_frame.setEnabled(True)
+                self.config_mode = True
+                self.update_config_field_label()
 
             elif 'data_tx' in connection_state:
                 # self.in_data_tx_mode = True
@@ -157,9 +182,10 @@ class MainWindow(QMainWindow):
         else:
             # Disable buttons and reset UI elements
             self.connect_button.setText("Connect")
-            self.config_input_frame.setEnabled(True)
+            self.config_input_frame.setEnabled(False)
             self.data_tx_button.setEnabled(False)
             self.file_tx_button.setEnabled(False)
+            self.config_mode = False
 
             # Resit client attribute
             self.client = None

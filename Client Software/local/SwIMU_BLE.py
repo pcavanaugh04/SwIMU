@@ -31,7 +31,7 @@ from datetime import datetime
 import time
 import os
 from bleak import BleakScanner, BleakClient
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
 
 # Define UUID's from the BLE periphrial
 FILE_TX_SERVICE_UUID = "550e8404-e29b-41d4-a716-446655440000"
@@ -73,7 +73,7 @@ nest_asyncio.apply()
 # the program will spin up a qt thread. on connection, the program will emit a signal to the main program to update the UI
 # based on the signal recieved, the program will configure the UI to perform the appropriate actions.
 
-class BLEClient(BleakClient, QObject):
+class BLEClient(BleakClient, QThread):
     new_data = pyqtSignal(object)
 
     def __init__(self, address, timeout=10):
@@ -83,11 +83,12 @@ class BLEClient(BleakClient, QObject):
         print("QObject initilzied in BLEClient")
         # super(BleakClient, self).__init__(address, timeout=timeout)
         BleakClient.__init__(self, address, timeout=timeout)
-        print("BleakClient initilzied in BLEClient")
 
         file_data = b""
                 # Start a loop to run for 10s to read  the IMU_DATA characteristic
         self.times = []
+        self._config_entries = None
+        self.new_config_data = False
         self.Ax = []
         self.Ay = []
         self.Az = []
@@ -95,6 +96,18 @@ class BLEClient(BleakClient, QObject):
         self.Gy = []
         self.Gz = []
         self.sensor_list = [self.times, self.Ax, self.Ay, self.Az, self.Gx, self.Gy, self.Gz]
+        print("BleakClient initilzied in BLEClient")
+
+    @property
+    async def config_entries(self):
+        return self._config_entries
+    
+    @config_entries.setter
+    async def config_entries(self, entries: dict):
+        self._config_entries = entries
+        self.new_config_data = True
+        print(f"New Config Entries Received on BLE Client!: {self._config_entries}")
+        
 
     async def handle_disconnect(self, client):
         print("Disconnected from server!")
@@ -134,21 +147,22 @@ class BLEClient(BleakClient, QObject):
             await asyncio.sleep(5)  # Adjust the polling frequency as needed
             
     async def config_device(self):
-        # poll the user with an asyncio-safe function to prevent blocking
-        input_name = await user_input("Enter the SwIMU user's name: ")
-        # Write to swimmer name characteristic
-        await self.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
+        # Hold the client in a loop until the new config data flag is tripped
+        # then read new data from the attribute and send to periphrial
+        while await self.config_entries is None:
+            await asyncio.sleep(0.1)
+            
+        config_name = self.config_entries["Name"]
+        config_activity = self.config_entries["Name"]
+        
+        print(f"Sending New Config Data to Periphrial: {self.config_entries}")
         # Update the datetime characterisitc to ensure an accurate refrence value
         datetime_str = datetime.now().strftime(DT_FMT)
         await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        # Repeat with the activity 
-        input_activity = await user_input("Enter the SwIMU activty name: ")
-        datetime_str = datetime.now().strftime(DT_FMT)
-        await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
+        await self.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
         await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
-        # Get the new filename from the server after sending our config information
-        # new_file_name = await self.read_gatt_char(FILE_NAME_UUID)
-        # print(f"Configured file name: {new_file_name.decode('utf-8')}")
+
+        self.config_entries = None
         
     async def rx_IMU_readings_mode(self):
         ### ------------------ BLE Notify Implementation ----------------- ### 
@@ -320,37 +334,10 @@ async def scan(target_device_name: str):
         print("Target Device Not Found!")
         return None
 
-# Define the "main" function for Asyncio. 
-async def run():
-    # Scan for ble devices in our proximity    
-    
-    # client = BLEClient(address, timeout=20)
 
-    # while True:
-        # await prompt_connection()
-    # Device is a tuple containing (BLEDevice, AdvData) from the scanner
-    device = await scan(TARGET_DEVICE)
-    if device is None:
-        print("Failed to discover device! Resetting...")
-    
-    adv_service = device[1].service_uuids[0]
-    address = device[0].address
-    
-    print(f"Connecting to address: {address}")
-
-    async with BLEClient(address, timeout=20) as client:
-        print("Device Connected!")
-        if CONFIG_SERVICE_UUID in adv_service:
-            await client.config_device()
-        elif IMU_TX_SERVICE_UUID in adv_service:
-            await client.rx_IMU_readings_mode()
-        
-        elif FILE_TX_SERVICE_UUID in adv_service:
-            await client.file_rx_mode()
-
-class BLEWorker(QObject):
+class BLEWorker(QThread):
     finished = pyqtSignal()
-    connected = pyqtSignal(bool)
+    connected = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -385,16 +372,24 @@ class BLEWorker(QObject):
 
         async with BLEClient(address, timeout=20) as client:
             self.client = client
-            self.connected.emit(True)
             print("Device Connected!")
             if CONFIG_SERVICE_UUID in adv_service:
+                self.connected.emit('config')
+                # Give up control for a second to clear thread exchange
+                await asyncio.sleep(0.1)
                 await self.client.config_device()
+                
             elif IMU_TX_SERVICE_UUID in adv_service:
+                self.connected.emit('data_tx')
                 await self.client.rx_IMU_readings_mode()
             
             elif FILE_TX_SERVICE_UUID in adv_service:
+                self.connected.emit('file_tx')
                 await self.client.file_rx_mode()
-            self.connected.emit(False)
+                
+            self.connected.emit('')
+    
+    
     def stop(self):
         """
         Stop the BLE loop by setting the running flag to False.
