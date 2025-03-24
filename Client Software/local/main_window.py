@@ -134,8 +134,10 @@ class MainWindow(QMainWindow):
             print(f"Contents of config dict: {self.config_info}")
             # If all data has been entered, update client property and clean up process
             if self.config_field_index >= len(self.config_fields):
-                self.client.config_entires = self.config_info
+                self.worker.set_config_attribute(self.config_info)
                 self.config_field_index = 0
+                print("Writing to config engries attirbute from Main window")
+
 
     
     def update_config_field_label(self):

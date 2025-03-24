@@ -99,11 +99,11 @@ class BLEClient(BleakClient, QThread):
         print("BleakClient initilzied in BLEClient")
 
     @property
-    async def config_entries(self):
+    def config_entries(self):
         return self._config_entries
     
     @config_entries.setter
-    async def config_entries(self, entries: dict):
+    def config_entries(self, entries: dict):
         self._config_entries = entries
         self.new_config_data = True
         print(f"New Config Entries Received on BLE Client!: {self._config_entries}")
@@ -149,7 +149,7 @@ class BLEClient(BleakClient, QThread):
     async def config_device(self):
         # Hold the client in a loop until the new config data flag is tripped
         # then read new data from the attribute and send to periphrial
-        while await self.config_entries is None:
+        while self.config_entries is None:
             await asyncio.sleep(0.1)
             
         config_name = self.config_entries["Name"]
@@ -159,8 +159,8 @@ class BLEClient(BleakClient, QThread):
         # Update the datetime characterisitc to ensure an accurate refrence value
         datetime_str = datetime.now().strftime(DT_FMT)
         await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        await self.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
-        await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
+        await self.write_gatt_char(PERSONNAME_UUID, config_name.encode("utf-8"))
+        await self.write_gatt_char(ACTIVITY_TYPE_UUID, config_activity.encode("utf-8"))
 
         self.config_entries = None
         
@@ -338,11 +338,13 @@ async def scan(target_device_name: str):
 class BLEWorker(QThread):
     finished = pyqtSignal()
     connected = pyqtSignal(str)
+    update_config_attribute = pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
         self._is_running = True
         self.loop = None
+        self.update_config_attribute.connect(self.update_BLE_client_config_attribute)
 
     @pyqtSlot()
     def run(self):
@@ -388,6 +390,15 @@ class BLEWorker(QThread):
                 await self.client.file_rx_mode()
                 
             self.connected.emit('')
+            
+    def set_config_attribute(self, config_dict: dict):
+        # Function to be called by main thread to trigger signal/slot exchange
+        self.update_config_attribute.emit(config_dict)
+        
+    def update_BLE_client_config_attribute(self, config_dict):
+        # function on this thread to update client attributes
+        self.client.config_entries = config_dict
+    
     
     
     def stop(self):

@@ -276,6 +276,7 @@ void BLEManager::pairCentral() {
 // ---------------- Config Mode Methods and Callbacks --------------- //
 void BLEManager::enterConfigMode(int timeout) {
   // Set Flag that we're accepting new config values
+  fileConfigedFlag = false;
   BLE.setAdvertisedService(configInfoService);
   BLE.advertise();
   enterPairingMode(timeout);
