@@ -89,6 +89,8 @@ class BLEClient(BleakClient, QThread):
         self.times = []
         self._config_entries = None
         self.new_config_data = False
+        self._data_tx_is_active = False
+        self._file_tx_is_active = False
         self.Ax = []
         self.Ay = []
         self.Az = []
@@ -107,6 +109,22 @@ class BLEClient(BleakClient, QThread):
         self._config_entries = entries
         self.new_config_data = True
         print(f"New Config Entries Received on BLE Client!: {self._config_entries}")
+        
+    @property
+    def data_tx_is_active(self):
+        return self._data_tx_is_active
+    
+    @data_tx_is_active.setter
+    def data_tx_is_active(self, status: bool):
+        self._data_tx_is_active = status
+        
+    @property
+    def file_tx_is_active(self):
+        return self._file_tx_is_active
+    
+    @file_tx_is_active.setter
+    def file_tx_is_active(self, status: bool):
+        self._file_tx_is_active = status
         
 
     async def handle_disconnect(self, client):
@@ -176,37 +194,44 @@ class BLEClient(BleakClient, QThread):
         async def handle_IMU_notification(sender, data):            
             # Decode bytes array into human readable string
             imu_sensor_values = data.decode("utf-8") 
-            # print(f"Recieved Data: {imu_sensor_values}")
             # process the data based on format "time, Ax, Ay, Az, Gx, Gy, Gz"
             split_line = imu_sensor_values.split(",")
             imu_data_line = [float(x) for x in split_line]
-            # for i, value in enumerate(imu_data_line):
-            #     self.sensor_list[i].append(value)
+            # Filter any erroneous data
+            if len(imu_data_line) != 7:
+                print(f"Length is not 7, measured length: {len(imu_data_line)}")
+                return
             self.new_data.emit(imu_data_line)
-            # print(f"Sensor List: {self.sensor_list}")
+            
         # Configure the notification
         await self.start_notify(IMU_DATA_UUID, handle_IMU_notification)
-        await user_input("Press Enter to Start Data Transmission")
-        # Write the start request
-        await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
-        start_time = time.perf_counter()
-        self.tx_active = True
-        while self.tx_active:
+        # put in a wait loop until the request is recieved from the User
+        while not self.data_tx_is_active:
             await asyncio.sleep(0.1)
+            
+        start_time = await self.start_IMU_readings()
+
+        # Hold thread in loop while waiting for user input to stop tx session
+        while self.data_tx_is_active:
+            await asyncio.sleep(0.1)
+            
+        await self.stop_IMU_readings(start_time)
 
     async def start_IMU_readings(self):
+        start_time = time.perf_counter()
+        print("Sending Start command from Client")
         await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
+        return start_time
 
-    async def stop_IMU_readings(self):
+    async def stop_IMU_readings(self, start_time):
         await self.write_gatt_char(IMU_REQUEST_UUID, b"END")
         self.tx_active = False
-        """
+
         record_time = time.perf_counter() - start_time
 
         print("----------------- BLE Notify Implementation ---------------")    
         print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
         print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
-"""
         
     
     async def write_to_file(self, save_path, file_data):
@@ -339,12 +364,16 @@ class BLEWorker(QThread):
     finished = pyqtSignal()
     connected = pyqtSignal(str)
     update_config_attribute = pyqtSignal(object)
+    update_data_tx_status = pyqtSignal(bool)
+    update_file_tx_status = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
         self._is_running = True
         self.loop = None
         self.update_config_attribute.connect(self.update_BLE_client_config_attribute)
+        self.update_data_tx_status.connect(self.update_BLE_client_data_tx_status)
+        self.update_file_tx_status.connect(self.update_BLE_client_file_tx_status)
 
     @pyqtSlot()
     def run(self):
@@ -395,10 +424,27 @@ class BLEWorker(QThread):
         # Function to be called by main thread to trigger signal/slot exchange
         self.update_config_attribute.emit(config_dict)
         
-    def update_BLE_client_config_attribute(self, config_dict):
+    def update_BLE_client_config_attribute(self, config_dict: dict):
         # function on this thread to update client attributes
         self.client.config_entries = config_dict
     
+    def set_data_tx_status(self, status: bool):
+        # Function to be called by main thread to trigger signal/slot exchange
+        print(f"Emitting data_tx status signal with value: {status}")
+        self.update_data_tx_status.emit(status)
+        
+    def update_BLE_client_data_tx_status(self, status: bool):
+        # function on this thread to update client attributes
+        print(f"Setting data_tx_status client attribute to value: {status}")
+        self.client.data_tx_is_active = status
+        
+    def set_file_tx_status(self, status: bool):
+        # Function to be called by main thread to trigger signal/slot exchange
+        self.update_file_tx_status.emit(status)
+
+    def update_BLE_client_file_tx_status(self, status: bool):
+        # function on this thread to update client attributes
+        self.client.file_tx_is_active = status
     
     
     def stop(self):
