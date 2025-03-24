@@ -113,6 +113,8 @@ class MainWindow(QMainWindow):
     def start_stop_file_tx(self):
         # Start Data Transmission. This method will be inaccessible until the client is connected,
         # so no need to check for client status
+        self.worker.set_file_tx_status(not self.in_file_tx_mode)
+
         if not self.in_file_tx_mode:
             # send peripheral the start command
             self.data_tx_button.setText("Stop File Tx")
@@ -192,7 +194,6 @@ class MainWindow(QMainWindow):
             self.client = None
             
     def update_data(self, data):
-        print(f"Data Recieved in Main Window: {data}")
         for i, value in enumerate(data):
             self.graph_slices[i].append(value)
         
@@ -207,8 +208,7 @@ class MainWindow(QMainWindow):
                 self.graph_slices[i] = data_list
         # Generate x-axis values (sample indices)
         x_axis = self.graph_slices[0]
-        print(f"X Axis: {x_axis}")
-        print(f"Accel X graph data: {self.graph_slices[1]}")
+
         # Update accelerometer curves
         self.accel_x_curve.setData(x_axis, self.graph_slices[1])
         self.accel_y_curve.setData(x_axis, self.graph_slices[2])

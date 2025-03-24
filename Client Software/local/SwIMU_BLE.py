@@ -242,8 +242,9 @@ class BLEClient(BleakClient, QThread):
                 
     async def file_rx_mode(self):
 
-        # Send Request for File transfer
-        await user_input("Press Enter to Start File Transfer")
+        # Wait for user to prompt the file tx start
+        while not self.file_tx_is_active:
+            await asyncio.sleep(0.1)
 
         await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"SEND_FILES")
         status = await self.read_gatt_char(FILE_TX_REQUEST_UUID)
@@ -403,7 +404,7 @@ class BLEWorker(QThread):
 
         async with BLEClient(address, timeout=20) as client:
             self.client = client
-            print("Device Connected!")
+            print(f"Device Connected!: Service: {adv_service}")
             if CONFIG_SERVICE_UUID in adv_service:
                 self.connected.emit('config')
                 # Give up control for a second to clear thread exchange
@@ -417,7 +418,7 @@ class BLEWorker(QThread):
             elif FILE_TX_SERVICE_UUID in adv_service:
                 self.connected.emit('file_tx')
                 await self.client.file_rx_mode()
-                
+              
             self.connected.emit('')
             
     def set_config_attribute(self, config_dict: dict):
