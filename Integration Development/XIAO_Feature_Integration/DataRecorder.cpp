@@ -177,3 +177,21 @@ void DataRecorder::clearWhiteList() {
     Serial.println("Failed to clear whitelist.");
   }
 }
+
+void DataRecorder::clearAccelDir() {
+    const char* dirPath = "accelDir";
+    File32 dir;
+    if (!dir.open(dirPath, O_RDONLY)) {
+        Serial.println("Failed to open directory");
+        return;
+    }
+    
+    File32 entry;
+    while (entry.openNext(&dir, O_READ)) {
+        if (!entry.remove()) Serial.println("Error file.remove");
+    }
+    dir.close();
+    // sd.rmdir(dirPath); // Remove the main directory after clearing
+    Serial.print("Cleared directory: ");
+    Serial.println(dirPath);
+}

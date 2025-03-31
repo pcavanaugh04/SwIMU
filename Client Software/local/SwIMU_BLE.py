@@ -30,8 +30,9 @@ import nest_asyncio
 from datetime import datetime
 import time
 import os
+import re
 from bleak import BleakScanner, BleakClient
-from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
 
 # Define UUID's from the BLE periphrial
 FILE_TX_SERVICE_UUID = "550e8404-e29b-41d4-a716-446655440000"
@@ -73,7 +74,32 @@ nest_asyncio.apply()
 # the program will spin up a qt thread. on connection, the program will emit a signal to the main program to update the UI
 # based on the signal recieved, the program will configure the UI to perform the appropriate actions.
 
-class BLEClient(BleakClient, QObject):
+def clean_csv_data(raw_data: str) -> str:
+    """
+    Cleans CSV data by removing lines that do not contain exactly 7 fields.
+
+    :param raw_data: The raw CSV data as a string.
+    :return: A cleaned CSV string with only valid lines.
+    """
+    clean_start_time = time.perf_counter()
+    
+    cleaned_lines = []
+    
+    for line in raw_data.splitlines():
+        fields = line.split(',')
+        if len(fields) == 7:  # Ensure the line contains exactly 7 fields
+            # Check to see if data has been corrupted from adding multiple fields together
+            if not any([len(re.findall(r"\.", field)) > 1 for field in fields]):
+                cleaned_lines.append(line)
+            
+            
+    clean_time = (time.perf_counter() - clean_start_time) / 1000
+    print(f"file cleaned in {clean_time:.2f}s")
+
+    return '\n'.join(cleaned_lines)
+
+
+class BLEClient(BleakClient, QThread):
     new_data = pyqtSignal(object)
 
     def __init__(self, address, timeout=10):
@@ -83,11 +109,13 @@ class BLEClient(BleakClient, QObject):
         print("QObject initilzied in BLEClient")
         # super(BleakClient, self).__init__(address, timeout=timeout)
         BleakClient.__init__(self, address, timeout=timeout)
-        print("BleakClient initilzied in BLEClient")
 
-        file_data = b""
                 # Start a loop to run for 10s to read  the IMU_DATA characteristic
         self.times = []
+        self._config_entries = None
+        self.new_config_data = False
+        self._data_tx_is_active = False
+        self._file_tx_is_active = False
         self.Ax = []
         self.Ay = []
         self.Az = []
@@ -95,6 +123,34 @@ class BLEClient(BleakClient, QObject):
         self.Gy = []
         self.Gz = []
         self.sensor_list = [self.times, self.Ax, self.Ay, self.Az, self.Gx, self.Gy, self.Gz]
+        print("BleakClient initilzied in BLEClient")
+
+    @property
+    def config_entries(self):
+        return self._config_entries
+    
+    @config_entries.setter
+    def config_entries(self, entries: dict):
+        self._config_entries = entries
+        self.new_config_data = True
+        print(f"New Config Entries Received on BLE Client!: {self._config_entries}")
+        
+    @property
+    def data_tx_is_active(self):
+        return self._data_tx_is_active
+    
+    @data_tx_is_active.setter
+    def data_tx_is_active(self, status: bool):
+        self._data_tx_is_active = status
+        
+    @property
+    def file_tx_is_active(self):
+        return self._file_tx_is_active
+    
+    @file_tx_is_active.setter
+    def file_tx_is_active(self, status: bool):
+        self._file_tx_is_active = status
+        
 
     async def handle_disconnect(self, client):
         print("Disconnected from server!")
@@ -134,21 +190,22 @@ class BLEClient(BleakClient, QObject):
             await asyncio.sleep(5)  # Adjust the polling frequency as needed
             
     async def config_device(self):
-        # poll the user with an asyncio-safe function to prevent blocking
-        input_name = await user_input("Enter the SwIMU user's name: ")
-        # Write to swimmer name characteristic
-        await self.write_gatt_char(PERSONNAME_UUID, input_name.encode("utf-8"))
+        # Hold the client in a loop until the new config data flag is tripped
+        # then read new data from the attribute and send to periphrial
+        while self.config_entries is None:
+            await asyncio.sleep(0.1)
+            
+        config_name = self.config_entries["Name"]
+        config_activity = self.config_entries["Activity"]
+        
+        print(f"Sending New Config Data to Periphrial: {self.config_entries}")
         # Update the datetime characterisitc to ensure an accurate refrence value
         datetime_str = datetime.now().strftime(DT_FMT)
         await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        # Repeat with the activity 
-        input_activity = await user_input("Enter the SwIMU activty name: ")
-        datetime_str = datetime.now().strftime(DT_FMT)
-        await self.write_gatt_char(DATETIME_UUID, datetime_str.encode("utf-8"))
-        await self.write_gatt_char(ACTIVITY_TYPE_UUID, input_activity.encode("utf-8"))
-        # Get the new filename from the server after sending our config information
-        # new_file_name = await self.read_gatt_char(FILE_NAME_UUID)
-        # print(f"Configured file name: {new_file_name.decode('utf-8')}")
+        await self.write_gatt_char(PERSONNAME_UUID, config_name.encode("utf-8"))
+        await self.write_gatt_char(ACTIVITY_TYPE_UUID, config_activity.encode("utf-8"))
+
+        self.config_entries = None
         
     async def rx_IMU_readings_mode(self):
         ### ------------------ BLE Notify Implementation ----------------- ### 
@@ -162,49 +219,61 @@ class BLEClient(BleakClient, QObject):
         async def handle_IMU_notification(sender, data):            
             # Decode bytes array into human readable string
             imu_sensor_values = data.decode("utf-8") 
-            # print(f"Recieved Data: {imu_sensor_values}")
             # process the data based on format "time, Ax, Ay, Az, Gx, Gy, Gz"
             split_line = imu_sensor_values.split(",")
             imu_data_line = [float(x) for x in split_line]
-            # for i, value in enumerate(imu_data_line):
-            #     self.sensor_list[i].append(value)
+            # Filter any erroneous data
+            if len(imu_data_line) != 7:
+                print(f"Length is not 7, measured length: {len(imu_data_line)}")
+                return
             self.new_data.emit(imu_data_line)
-            # print(f"Sensor List: {self.sensor_list}")
+            
         # Configure the notification
         await self.start_notify(IMU_DATA_UUID, handle_IMU_notification)
-        await user_input("Press Enter to Start Data Transmission")
-        # Write the start request
-        await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
-        start_time = time.perf_counter()
-        self.tx_active = True
-        while self.tx_active:
+        # put in a wait loop until the request is recieved from the User
+        while not self.data_tx_is_active:
             await asyncio.sleep(0.1)
+            
+        start_time = await self.start_IMU_readings()
+
+        # Hold thread in loop while waiting for user input to stop tx session
+        while self.data_tx_is_active:
+            await asyncio.sleep(0.1)
+            
+        await self.stop_IMU_readings(start_time)
 
     async def start_IMU_readings(self):
+        start_time = time.perf_counter()
+        print("Sending Start command from Client")
         await self.write_gatt_char(IMU_REQUEST_UUID, b"START")
+        return start_time
 
-    async def stop_IMU_readings(self):
+    async def stop_IMU_readings(self, start_time):
         await self.write_gatt_char(IMU_REQUEST_UUID, b"END")
         self.tx_active = False
-        """
+
         record_time = time.perf_counter() - start_time
 
         print("----------------- BLE Notify Implementation ---------------")    
         print(f"Number of data packets recieved in {record_time}s: {len(data_list)}")
         print(f"Realized Frequency [Hz]: {len(data_list) / record_time}")
-"""
         
     
     async def write_to_file(self, save_path, file_data):
-        with open(save_path, "wb") as f:
-            f.write(file_data)
+        # Clean data
+        
+        cleaned_data = clean_csv_data(file_data)
+        
+        with open(save_path, "w") as f:
+            f.write(cleaned_data)
         print(f"Recieved Data Written to file: {save_path}")
-
+        
                 
     async def file_rx_mode(self):
 
-        # Send Request for File transfer
-        await user_input("Press Enter to Start File Transfer")
+        # Wait for user to prompt the file tx start
+        while not self.file_tx_is_active:
+            await asyncio.sleep(0.1)
 
         await self.write_gatt_char(FILE_TX_REQUEST_UUID, b"SEND_FILES")
         status = await self.read_gatt_char(FILE_TX_REQUEST_UUID)
@@ -220,14 +289,13 @@ class BLEClient(BleakClient, QObject):
         # define and assign notification callbacks on first file only
         if not self.file_rx_setup_flag:
             
-            file_data = b""
             # Callback to accumulate packets of file data from server
             async def handle_file_data(sender, data):
                 if data:
                     nonlocal file_data
                     # packet = data.decode("utf-8")
-                    file_data += data
-                    print(f"Written to file data variable: {data}")
+                    file_data += data.decode("utf-8")
+                    # print(f"Written to file data variable: {data}")
                 else:
                     print("Received empty data packet!")
                
@@ -258,7 +326,7 @@ class BLEClient(BleakClient, QObject):
                 print(f"Recieved file name: {file_name}")
             
             # setup variable to recieve file data
-            file_data = b""      
+            file_data = ""      
 
             # Initialize a Future event to hold until file transfer is complete
             transfer_complete = asyncio.Future()
@@ -270,7 +338,7 @@ class BLEClient(BleakClient, QObject):
         
             # Wait for transfer compltete notification
             await transfer_complete
-            print(f"File tx in {time.perf_counter() - file_tx_start} s")
+            print(f"File tx in {time.perf_counter() - file_tx_start:.2f} s")
         
             
             # Write recieved contents to file
@@ -320,42 +388,22 @@ async def scan(target_device_name: str):
         print("Target Device Not Found!")
         return None
 
-# Define the "main" function for Asyncio. 
-async def run():
-    # Scan for ble devices in our proximity    
-    
-    # client = BLEClient(address, timeout=20)
 
-    # while True:
-        # await prompt_connection()
-    # Device is a tuple containing (BLEDevice, AdvData) from the scanner
-    device = await scan(TARGET_DEVICE)
-    if device is None:
-        print("Failed to discover device! Resetting...")
-    
-    adv_service = device[1].service_uuids[0]
-    address = device[0].address
-    
-    print(f"Connecting to address: {address}")
-
-    async with BLEClient(address, timeout=20) as client:
-        print("Device Connected!")
-        if CONFIG_SERVICE_UUID in adv_service:
-            await client.config_device()
-        elif IMU_TX_SERVICE_UUID in adv_service:
-            await client.rx_IMU_readings_mode()
-        
-        elif FILE_TX_SERVICE_UUID in adv_service:
-            await client.file_rx_mode()
-
-class BLEWorker(QObject):
+class BLEWorker(QThread):
     finished = pyqtSignal()
-    connected = pyqtSignal(bool)
+    connected = pyqtSignal(str)
+    update_config_attribute = pyqtSignal(object)
+    update_data_tx_status = pyqtSignal(bool)
+    update_file_tx_status = pyqtSignal(bool)
 
     def __init__(self):
         super().__init__()
         self._is_running = True
         self.loop = None
+        self.update_config_attribute.connect(self.update_BLE_client_config_attribute)
+        self.update_data_tx_status.connect(self.update_BLE_client_data_tx_status)
+        self.update_file_tx_status.connect(self.update_BLE_client_file_tx_status)
+        self.async_tasks = set()  # collection of async tasks
 
     @pyqtSlot()
     def run(self):
@@ -385,16 +433,50 @@ class BLEWorker(QObject):
 
         async with BLEClient(address, timeout=20) as client:
             self.client = client
-            self.connected.emit(True)
-            print("Device Connected!")
+            print(f"Device Connected!: Service: {adv_service}")
             if CONFIG_SERVICE_UUID in adv_service:
+                self.connected.emit('config')
+                # Give up control for a second to clear thread exchange
+                await asyncio.sleep(0.1)
                 await self.client.config_device()
+                
             elif IMU_TX_SERVICE_UUID in adv_service:
+                self.connected.emit('data_tx')
                 await self.client.rx_IMU_readings_mode()
             
             elif FILE_TX_SERVICE_UUID in adv_service:
+                self.connected.emit('file_tx')
                 await self.client.file_rx_mode()
-            self.connected.emit(False)
+              
+            self.connected.emit('')
+            
+    def set_config_attribute(self, config_dict: dict):
+        # Function to be called by main thread to trigger signal/slot exchange
+        self.update_config_attribute.emit(config_dict)
+        
+    def update_BLE_client_config_attribute(self, config_dict: dict):
+        # function on this thread to update client attributes
+        self.client.config_entries = config_dict
+    
+    def set_data_tx_status(self, status: bool):
+        # Function to be called by main thread to trigger signal/slot exchange
+        print(f"Emitting data_tx status signal with value: {status}")
+        self.update_data_tx_status.emit(status)
+        
+    def update_BLE_client_data_tx_status(self, status: bool):
+        # function on this thread to update client attributes
+        print(f"Setting data_tx_status client attribute to value: {status}")
+        self.client.data_tx_is_active = status
+        
+    def set_file_tx_status(self, status: bool):
+        # Function to be called by main thread to trigger signal/slot exchange
+        self.update_file_tx_status.emit(status)
+
+    def update_BLE_client_file_tx_status(self, status: bool):
+        # function on this thread to update client attributes
+        self.client.file_tx_is_active = status
+    
+    
     def stop(self):
         """
         Stop the BLE loop by setting the running flag to False.

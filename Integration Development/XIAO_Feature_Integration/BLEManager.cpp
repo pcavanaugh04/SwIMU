@@ -276,6 +276,7 @@ void BLEManager::pairCentral() {
 // ---------------- Config Mode Methods and Callbacks --------------- //
 void BLEManager::enterConfigMode(int timeout) {
   // Set Flag that we're accepting new config values
+  fileConfigedFlag = false;
   BLE.setAdvertisedService(configInfoService);
   BLE.advertise();
   enterPairingMode(timeout);
@@ -451,6 +452,7 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
     if (whiteListFileNames.empty()) {
       Serial.println("No files available to transfer!");
       fileTxRequestChar.writeValue("ERROR!");
+      exitFileTxMode();
       return;
     }
     
@@ -477,9 +479,9 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
     // If the index value is less than the length of file lists to transmit
     // If the list has been exhausted, exit transmit mode. Confirm file deletion
     if (txFileListIndex < (whiteListFileNames.size() - 1)) {
-      Serial.print("Notifying Central of more files!");
-      Serial.print("Number of files: ");
-      Serial.println(whiteListFileNames.size());
+      Serial.println("Notifying Central of more files!");
+      // Serial.print("Number of files: ");
+      // Serial.println(whiteListFileNames.size());
       Serial.print("Value of txFileListIndex: ");
       Serial.println(txFileListIndex);
 
@@ -493,23 +495,30 @@ void BLEManager::onFileTxRequest(BLEDevice central, BLECharacteristic characteri
       // Code to run completion of the WhiteList transfer
       // Clear contents of the whitelist file. Save this for later, implement when
       // comfortable deleting data off the device as well.
-      // dataRecorder.clearWhiteList();
+      dataRecorder.clearWhiteList();
+      dataRecorder.clearAccelDir();
+      whiteListFileNames.clear();
       Serial.println("No more files!");
       fileTxRequestChar.writeValue("DONE");
       fileTxActive = false;
       txFileListIndex = 0;
+      exitFileTxMode();
     }
-    fileSetup = false;
   }
 }
 bool BLEManager::enterFileTxMode(int timeout) {
   BLE.setAdvertisedService(fileTxService);
   BLE.advertise();
+  exitFileTxModeFlag = false;
   return true;
 }
 
 void BLEManager::exitFileTxMode() {
-  return;
+  exitFileTxModeFlag = true;
+  central = getCentral();
+  if (central.connected()){
+    central.disconnect();
+  }
 }
 
 bool BLEManager::txFileData() {
@@ -571,8 +580,8 @@ bool BLEManager::txFileData() {
       // Serial.print("Buffer contents: ");
       // Serial.println(buffer);     // Should show file contents
       // Debug print contents in hex
-      Serial.print("Buffer Contents: ");
-      Serial.println(txBuffer);
+      // Serial.print("Buffer Contents: ");
+      // Serial.println(txBuffer);
       // Write the full buffer to the characteristic
       char* testPacket = "Test Packet";
       bool success = fileTxDataChar.writeValue((uint*)txBuffer, bytesRead);
@@ -595,27 +604,31 @@ bool BLEManager::txFileData() {
       // delay(500); // Small delay to prevent BLE stack overflow
     }
 
-    else {
+    else if (!txFile.available() && fileSetup && fileDataTxActive) {
       int txElapsedTime = (millis() - txStartTime) / 1000;
       Serial.print("File transmission completed in: ");
       Serial.println(txElapsedTime);
       fileDataTxActive = false;
       fileTxActive = false;
+      fileSetup = false;
 
       txFile.close();
+      Serial.println("Tx File Closed");
       fileTxCompleteChar.writeValue("TRANSFER_COMPLETE");
+      Serial.println("Client Notified of Complete Transfer");
       txFileListIndex++;
 
 
         // Should we have a query to the client to confirm file deletion? Probably
     }
-    return true;
   }
 
-  else {
-    return true;
+  else if (!fileTxActive && exitFileTxModeFlag) {
+    // Exit Mode and notify main poll loop that it's time to exit
+    return false;
   }
-  // if the flag is 
+  // Default Case to return true and keep mode going in parent class. This could use refinement
+  return true;
 }
 /*
 //------------------ BLE Connection Event Callbacks ---------------- //

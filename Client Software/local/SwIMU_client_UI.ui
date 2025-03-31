@@ -81,13 +81,13 @@
        </widget>
       </item>
       <item>
-       <widget class="QFrame" name="frame">
+       <widget class="QFrame" name="config_input_frame">
         <property name="enabled">
          <bool>false</bool>
         </property>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item alignment="Qt::AlignLeft">
-          <widget class="QLabel" name="label">
+          <widget class="QLabel" name="config_field_label">
            <property name="sizePolicy">
             <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
              <horstretch>0</horstretch>
@@ -107,12 +107,12 @@
             </size>
            </property>
            <property name="text">
-            <string>Config Input Field:</string>
+            <string>Connect to Configure Device:</string>
            </property>
           </widget>
          </item>
          <item alignment="Qt::AlignRight">
-          <widget class="QLineEdit" name="config_field">
+          <widget class="QLineEdit" name="config_input_field">
            <property name="minimumSize">
             <size>
              <width>300</width>
@@ -193,7 +193,7 @@
      <x>0</x>
      <y>0</y>
      <width>1042</width>
-     <height>26</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuSwIMU_Client">
