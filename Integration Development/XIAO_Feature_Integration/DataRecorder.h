@@ -62,6 +62,7 @@ class DataRecorder {
     void initDevices(int chipSelect);
     char whiteListFilePath[100]; // Make sure this is large enough
     int getFileNameLength();
+    void clearAccelDir();        // Delete all contents of the SD card
 
 };
 

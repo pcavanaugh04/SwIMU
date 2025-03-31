@@ -20,7 +20,7 @@ if __name__ == "__main__":
         print("No file selected")
     # import contents of file to a pandas dataframe and plot it
     headers = ['elapsed_time','Ax', 'Ay', 'Az', 'Gx', 'Gy', 'Gz']
-    data = pd.read_csv(selected_file, header=None, names=headers)
+    data = pd.read_csv(selected_file, header=None, names=headers, dtype=float)
     # create a new column with the magnitude of the acceleration
     data['Amag'] = np.sqrt(data['Ax']**2 + data['Ay']**2 + data['Az']**2)
     # plot the magnitude of acceleration

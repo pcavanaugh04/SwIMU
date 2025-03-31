@@ -30,6 +30,7 @@ import nest_asyncio
 from datetime import datetime
 import time
 import os
+import re
 from bleak import BleakScanner, BleakClient
 from PyQt5.QtCore import QObject, pyqtSignal, pyqtSlot, QThread
 
@@ -73,6 +74,31 @@ nest_asyncio.apply()
 # the program will spin up a qt thread. on connection, the program will emit a signal to the main program to update the UI
 # based on the signal recieved, the program will configure the UI to perform the appropriate actions.
 
+def clean_csv_data(raw_data: str) -> str:
+    """
+    Cleans CSV data by removing lines that do not contain exactly 7 fields.
+
+    :param raw_data: The raw CSV data as a string.
+    :return: A cleaned CSV string with only valid lines.
+    """
+    clean_start_time = time.perf_counter()
+    
+    cleaned_lines = []
+    
+    for line in raw_data.splitlines():
+        fields = line.split(',')
+        if len(fields) == 7:  # Ensure the line contains exactly 7 fields
+            # Check to see if data has been corrupted from adding multiple fields together
+            if not any([len(re.findall(r"\.", field)) > 1 for field in fields]):
+                cleaned_lines.append(line)
+            
+            
+    clean_time = (time.perf_counter() - clean_start_time) / 1000
+    print(f"file cleaned in {clean_time:.2f}s")
+
+    return '\n'.join(cleaned_lines)
+
+
 class BLEClient(BleakClient, QThread):
     new_data = pyqtSignal(object)
 
@@ -84,7 +110,6 @@ class BLEClient(BleakClient, QThread):
         # super(BleakClient, self).__init__(address, timeout=timeout)
         BleakClient.__init__(self, address, timeout=timeout)
 
-        file_data = b""
                 # Start a loop to run for 10s to read  the IMU_DATA characteristic
         self.times = []
         self._config_entries = None
@@ -171,7 +196,7 @@ class BLEClient(BleakClient, QThread):
             await asyncio.sleep(0.1)
             
         config_name = self.config_entries["Name"]
-        config_activity = self.config_entries["Name"]
+        config_activity = self.config_entries["Activity"]
         
         print(f"Sending New Config Data to Periphrial: {self.config_entries}")
         # Update the datetime characterisitc to ensure an accurate refrence value
@@ -235,10 +260,14 @@ class BLEClient(BleakClient, QThread):
         
     
     async def write_to_file(self, save_path, file_data):
-        with open(save_path, "wb") as f:
-            f.write(file_data)
+        # Clean data
+        
+        cleaned_data = clean_csv_data(file_data)
+        
+        with open(save_path, "w") as f:
+            f.write(cleaned_data)
         print(f"Recieved Data Written to file: {save_path}")
-
+        
                 
     async def file_rx_mode(self):
 
@@ -260,14 +289,13 @@ class BLEClient(BleakClient, QThread):
         # define and assign notification callbacks on first file only
         if not self.file_rx_setup_flag:
             
-            file_data = b""
             # Callback to accumulate packets of file data from server
             async def handle_file_data(sender, data):
                 if data:
                     nonlocal file_data
                     # packet = data.decode("utf-8")
-                    file_data += data
-                    print(f"Written to file data variable: {data}")
+                    file_data += data.decode("utf-8")
+                    # print(f"Written to file data variable: {data}")
                 else:
                     print("Received empty data packet!")
                
@@ -298,7 +326,7 @@ class BLEClient(BleakClient, QThread):
                 print(f"Recieved file name: {file_name}")
             
             # setup variable to recieve file data
-            file_data = b""      
+            file_data = ""      
 
             # Initialize a Future event to hold until file transfer is complete
             transfer_complete = asyncio.Future()
@@ -310,7 +338,7 @@ class BLEClient(BleakClient, QThread):
         
             # Wait for transfer compltete notification
             await transfer_complete
-            print(f"File tx in {time.perf_counter() - file_tx_start} s")
+            print(f"File tx in {time.perf_counter() - file_tx_start:.2f} s")
         
             
             # Write recieved contents to file
@@ -375,6 +403,7 @@ class BLEWorker(QThread):
         self.update_config_attribute.connect(self.update_BLE_client_config_attribute)
         self.update_data_tx_status.connect(self.update_BLE_client_data_tx_status)
         self.update_file_tx_status.connect(self.update_BLE_client_file_tx_status)
+        self.async_tasks = set()  # collection of async tasks
 
     @pyqtSlot()
     def run(self):

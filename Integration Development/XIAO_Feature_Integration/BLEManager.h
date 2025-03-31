@@ -103,6 +103,7 @@ class BLEManager {
     bool fileDataTxActive = false;
     bool fileEndFlag;
     bool fileSetup = false;
+    bool exitFileTxModeFlag = false;
 
     int txFileListIndex = 0;
     int txStartTime;

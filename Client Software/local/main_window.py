@@ -117,7 +117,7 @@ class MainWindow(QMainWindow):
 
         if not self.in_file_tx_mode:
             # send peripheral the start command
-            self.data_tx_button.setText("Stop File Tx")
+            self.file_tx_button.setText("Stop File Tx")
             self.in_file_tx_mode = True
 
         else:
@@ -187,7 +187,9 @@ class MainWindow(QMainWindow):
             self.connect_button.setText("Connect")
             self.config_input_frame.setEnabled(False)
             self.data_tx_button.setEnabled(False)
+            self.data_tx_button.setText("Start Data Tx")
             self.file_tx_button.setEnabled(False)
+            self.file_tx_button.setText("Start File Tx")
             self.config_mode = False
 
             # Resit client attribute
@@ -218,4 +220,10 @@ class MainWindow(QMainWindow):
         self.gyro_x_curve.setData(x_axis, self.graph_slices[4])
         self.gyro_y_curve.setData(x_axis, self.graph_slices[5])
         self.gyro_z_curve.setData(x_axis, self.graph_slices[6])
+        
+    # def closeEvent():
+    #     # Kill all Coroutines
+    #     if self.worker is not None:
+    #         self.worker.kill()
+    
         
