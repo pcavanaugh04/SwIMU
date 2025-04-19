@@ -89,7 +89,8 @@ def clean_csv_data(raw_data: str) -> str:
         fields = line.split(',')
         if len(fields) == 7:  # Ensure the line contains exactly 7 fields
             # Check to see if data has been corrupted from adding multiple fields together
-            if not any([len(re.findall(r"\.", field)) > 1 for field in fields]):
+            if (not any([len(re.findall(r"\.", field)) > 1 for field in fields]) or
+                not any([len(re.findall(r"\-", field)) > 1 for field in fields])):
                 cleaned_lines.append(line)
             
             

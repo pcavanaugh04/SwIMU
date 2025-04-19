@@ -25,7 +25,7 @@ if __name__ == "__main__":
     data['Amag'] = np.sqrt(data['Ax']**2 + data['Ay']**2 + data['Az']**2)
     # plot the magnitude of acceleration
     plt.figure(figsize=(8,10))
-    # plt.plot(data['elapsed_time'], data['Amag'])
+    plt.plot(data['elapsed_time'], data['Amag'])
     plt.plot(data['elapsed_time'], data['Ax'], label='Ax')
     plt.plot(data['elapsed_time'], data['Ay'], label='Ay')
     plt.plot(data['elapsed_time'], data['Az'], label='Az')
